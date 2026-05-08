@@ -41,3 +41,28 @@ def test_axis_group_change_recalculates_main_and_preview_y_ranges(tmp_path) -> N
     assert main_high >= 300.0
     assert preview_low <= 0.0
     assert preview_high >= 300.0
+
+
+def test_focused_trace_keeps_other_traces_opaque_and_curves_optimized(tmp_path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    plot = WaveformPlot()
+    data = WaveformData(
+        time=np.arange(20.0),
+        channels=[
+            ChannelData("voltage", np.linspace(0.0, 2.0, 20), "#ffd400", "V"),
+            ChannelData("current", np.linspace(100.0, 300.0, 20), "#00d7ff", "A"),
+        ],
+        ignored_columns=[],
+        source_path=tmp_path / "wave.csv",
+        time_column="time",
+    )
+    plot.set_data(data)
+
+    plot._on_curve_clicked("voltage", object())
+
+    assert plot.curves["voltage"].zValue() > plot.curves["current"].zValue()
+    assert plot.curves["current"].opts["pen"].color().alpha() == 255
+    assert plot.curves["voltage"].opts["clipToView"] is True
+    assert plot.curves["voltage"].opts["autoDownsample"] is True
+    assert plot.curves["voltage"].opts["skipFiniteCheck"] is True

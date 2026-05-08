@@ -19,10 +19,11 @@ CURVE_WIDTH = 1.6
 PREVIEW_CURVE_WIDTH = 1.0
 FOCUSED_CURVE_WIDTH = 3.0
 FOCUSED_PREVIEW_CURVE_WIDTH = 1.8
-DIMMED_CURVE_ALPHA = 70
+DIMMED_CURVE_BLEND = 0.35
 ZERO_LINE_Z = -100
 CURVE_Z = 1
 FOCUSED_CURVE_Z = 50
+PLOT_BACKGROUND_COLOR = "#101214"
 LEFT_AXIS_COLOR = "#ffd400"
 RIGHT_AXIS_COLOR = "#00d7ff"
 
@@ -114,7 +115,7 @@ class WaveformPlot(QtWidgets.QWidget):
         self.view_box = WaveformViewBox(self.active_y_view_box)
         self.plot = pg.PlotWidget(viewBox=self.view_box)
         self.plot_item = self.plot.getPlotItem()
-        self.plot.setBackground("#101214")
+        self.plot.setBackground(PLOT_BACKGROUND_COLOR)
         self.plot.showGrid(x=True, y=True, alpha=0.25)
         self.legend = self.plot.addLegend(offset=(8, 8))
         self.plot.setLabel("bottom", "Time")
@@ -130,7 +131,7 @@ class WaveformPlot(QtWidgets.QWidget):
 
         self.preview = pg.PlotWidget()
         self.preview_item = self.preview.getPlotItem()
-        self.preview.setBackground("#101214")
+        self.preview.setBackground(PLOT_BACKGROUND_COLOR)
         self.preview.setMaximumHeight(120)
         self.preview.showGrid(x=True, y=False, alpha=0.15)
         self.preview.setMouseEnabled(x=False, y=False)
@@ -403,6 +404,7 @@ class WaveformPlot(QtWidgets.QWidget):
                 self.right_view_box.addItem(curve)
             else:
                 self.plot_item.addItem(curve)
+            _configure_curve_performance(curve)
             self.legend.addItem(curve, channel.name)
             preview_curve = pg.PlotDataItem(self.data.time[mask], channel.values[mask], pen=preview_pen)
             preview_curve.setZValue(CURVE_Z)
@@ -410,6 +412,7 @@ class WaveformPlot(QtWidgets.QWidget):
                 self.preview_right_view_box.addItem(preview_curve)
             else:
                 self.preview_item.addItem(preview_curve)
+            _configure_curve_performance(preview_curve)
             self.curves[channel.name] = curve
             self.curve_groups[channel.name] = group
             self.preview_curves[channel.name] = preview_curve
@@ -613,9 +616,7 @@ class WaveformPlot(QtWidgets.QWidget):
         if channel.name == self.focused_channel:
             focus_width = FOCUSED_PREVIEW_CURVE_WIDTH if preview else FOCUSED_CURVE_WIDTH
             return pg.mkPen(channel.color, width=focus_width)
-        color = QtGui.QColor(channel.color)
-        color.setAlpha(DIMMED_CURVE_ALPHA)
-        return pg.mkPen(color, width=width)
+        return pg.mkPen(_dimmed_curve_color(channel.color), width=width)
 
     def _curve_z_value(self, channel_name: str) -> int:
         return FOCUSED_CURVE_Z if channel_name == self.focused_channel else CURVE_Z
@@ -766,6 +767,24 @@ def _normalized_axis_group(group: str) -> str:
     if group == "disabled":
         return "disabled"
     return "right" if group == "right" else "left"
+
+
+def _configure_curve_performance(curve: pg.PlotDataItem) -> None:
+    curve.setClipToView(True)
+    curve.setDownsampling(auto=True, method="peak")
+    curve.setSkipFiniteCheck(True)
+
+
+def _dimmed_curve_color(color: str) -> QtGui.QColor:
+    source = QtGui.QColor(color)
+    background = QtGui.QColor(PLOT_BACKGROUND_COLOR)
+    dimmed = QtGui.QColor(
+        round(background.red() + (source.red() - background.red()) * DIMMED_CURVE_BLEND),
+        round(background.green() + (source.green() - background.green()) * DIMMED_CURVE_BLEND),
+        round(background.blue() + (source.blue() - background.blue()) * DIMMED_CURVE_BLEND),
+    )
+    dimmed.setAlpha(255)
+    return dimmed
 
 
 def _interpolate(time: np.ndarray, values: np.ndarray, x_value: float | None) -> float | None:
