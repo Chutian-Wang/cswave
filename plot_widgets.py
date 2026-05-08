@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import os
+import sys
 
 import numpy as np
 
@@ -12,6 +14,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 
 CURSOR_WIDTH = 2.25
+CURSOR_LABEL_FILL = (16, 18, 20, 210)
+CURSOR_LABEL_BORDER = (220, 220, 220, 120)
 ZERO_LINE_WIDTH = 1.4
 PREVIEW_REGION_BOUNDARY_WIDTH = 1.5
 PREVIEW_REGION_FRACTION = 0.30
@@ -24,6 +28,14 @@ ZERO_LINE_Z = -100
 CURVE_Z = 1
 FOCUSED_CURVE_Z = 50
 PLOT_BACKGROUND_COLOR = "#101214"
+MAIN_DOWNSAMPLE_METHOD = "peak"
+INTERACTION_DOWNSAMPLE_METHOD = "subsample"
+PREVIEW_DOWNSAMPLE_METHOD = "subsample"
+INTERACTION_SETTLE_MS = 140
+PREVIEW_RANGE_UPDATE_MS = 45
+PREVIEW_WHEEL_ZOOM_IN_FACTOR = 0.8
+PREVIEW_WHEEL_ZOOM_OUT_FACTOR = 1.25
+OPENGL_ENV_VAR = "CSWAVE_OPENGL"
 LEFT_AXIS_COLOR = "#ffd400"
 RIGHT_AXIS_COLOR = "#00d7ff"
 
@@ -39,9 +51,19 @@ class AxisGroupSettings:
 class WaveformViewBox(pg.ViewBox):
     """Scope-like navigation: x-axis by default, y-axis with Control."""
 
-    def __init__(self, y_target_getter: Callable[[], pg.ViewBox] | None = None) -> None:
+    interactionStarted = QtCore.Signal()
+
+    def __init__(
+        self,
+        y_target_getter: Callable[[], pg.ViewBox] | None = None,
+        *,
+        x_target_getter: Callable[[], pg.ViewBox] | None = None,
+        free_pan_getter: Callable[[], bool] | None = None,
+    ) -> None:
         super().__init__()
         self.y_target_getter = y_target_getter
+        self.x_target_getter = x_target_getter
+        self.free_pan_getter = free_pan_getter
 
     def wheelEvent(self, ev: QtGui.QWheelEvent) -> None:  # noqa: N802 - Qt override name.
         axis = "y" if _has_control_modifier(ev) else "x"
@@ -54,6 +76,10 @@ class WaveformViewBox(pg.ViewBox):
 
     def mouseDragEvent(self, ev: object, axis: int | None = None) -> None:  # noqa: N802 - Qt override name.
         ev.accept()
+        self.interactionStarted.emit()
+        if self._free_pan_enabled():
+            self._free_pan(ev)
+            return
         current = self.mapToView(ev.pos())
         previous = self.mapToView(ev.lastPos())
         delta = previous - current
@@ -67,6 +93,7 @@ class WaveformViewBox(pg.ViewBox):
             self.translateBy(x=delta.x())
 
     def zoom_axis(self, axis: str, *, zoom_in: bool, center: pg.Point | None = None) -> None:
+        self.interactionStarted.emit()
         factor = 0.8 if zoom_in else 1.25
         if axis == "y":
             self._y_target().scaleBy(y=factor, center=center)
@@ -90,10 +117,53 @@ class WaveformViewBox(pg.ViewBox):
             return self
         return self.y_target_getter()
 
+    def _x_target(self) -> pg.ViewBox:
+        if self.x_target_getter is None:
+            return self
+        return self.x_target_getter()
+
+    def _free_pan_enabled(self) -> bool:
+        return self.free_pan_getter() if self.free_pan_getter is not None else False
+
+    def _free_pan(self, ev: object) -> None:
+        x_target = self._x_target()
+        y_target = self._y_target()
+        scene_position = ev.scenePos()
+        last_scene_position = ev.lastScenePos()
+        current_x = x_target.mapSceneToView(scene_position)
+        previous_x = x_target.mapSceneToView(last_scene_position)
+        current_y = y_target.mapSceneToView(scene_position)
+        previous_y = y_target.mapSceneToView(last_scene_position)
+        delta_x = previous_x.x() - current_x.x()
+        delta_y = previous_y.y() - current_y.y()
+        if x_target is y_target:
+            x_target.translateBy(x=delta_x, y=delta_y)
+        else:
+            x_target.translateBy(x=delta_x)
+            y_target.translateBy(y=delta_y)
+
+
+class CursorLineLabel(pg.InfLineLabel):
+    """Label that drags the cursor line instead of sliding along it."""
+
+    def mouseDragEvent(self, ev: object) -> None:  # noqa: N802 - Qt override name.
+        if ev.button() != QtCore.Qt.MouseButton.LeftButton:
+            return
+        ev.accept()
+        view_box = self.line.getViewBox()
+        if view_box is None:
+            return
+        position = view_box.mapSceneToView(ev.scenePos())
+        if self.line.angle % 180 == 90:
+            self.line.setValue(position.x())
+        else:
+            self.line.setValue(position.y())
+
 
 class WaveformPlot(QtWidgets.QWidget):
     cursorChanged = QtCore.Signal()
     viewRangeChanged = QtCore.Signal(tuple)
+    activeAxisGroupChanged = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -104,6 +174,8 @@ class WaveformPlot(QtWidgets.QWidget):
         self.preview_curves: dict[str, pg.PlotDataItem] = {}
         self.preview_curve_groups: dict[str, str] = {}
         self.focused_channel: str | None = None
+        self.opengl_available = _opengl_available()
+        self.renderer_mode = "opengl" if self.opengl_available and _env_flag(OPENGL_ENV_VAR) else "cpu"
         self._syncing_region = False
         self._syncing_view = False
         self.active_y_group = "left"
@@ -111,8 +183,24 @@ class WaveformPlot(QtWidgets.QWidget):
         self._x_cursors_initialized = False
         self._y_cursors_initialized = False
         self.axis_settings: dict[str, AxisGroupSettings] = {}
+        self._interaction_downsampling_active = False
+        self._pending_preview_range: tuple[float, float] | None = None
 
-        self.view_box = WaveformViewBox(self.active_y_view_box)
+        self._interaction_timer = QtCore.QTimer(self)
+        self._interaction_timer.setSingleShot(True)
+        self._interaction_timer.setInterval(INTERACTION_SETTLE_MS)
+        self._interaction_timer.timeout.connect(self._restore_quality_downsampling)
+
+        self._preview_range_timer = QtCore.QTimer(self)
+        self._preview_range_timer.setSingleShot(True)
+        self._preview_range_timer.setInterval(PREVIEW_RANGE_UPDATE_MS)
+        self._preview_range_timer.timeout.connect(self._flush_pending_preview_range)
+
+        self.view_box = WaveformViewBox(
+            self.active_y_view_box,
+            free_pan_getter=self._focused_trace_free_pan_enabled,
+        )
+        self.view_box.interactionStarted.connect(self._mark_interacting)
         self.plot = pg.PlotWidget(viewBox=self.view_box)
         self.plot_item = self.plot.getPlotItem()
         self.plot.setBackground(PLOT_BACKGROUND_COLOR)
@@ -122,7 +210,11 @@ class WaveformPlot(QtWidgets.QWidget):
         self.plot.setMouseEnabled(x=True, y=True)
         self.plot_item.showAxis("right")
 
-        self.right_view_box = pg.ViewBox()
+        self.right_view_box = WaveformViewBox(
+            free_pan_getter=self._focused_trace_free_pan_enabled,
+            x_target_getter=lambda: self.view_box,
+        )
+        self.right_view_box.interactionStarted.connect(self._mark_interacting)
         self.right_view_box.setXLink(self.view_box)
         self.right_view_box.setZValue(self.view_box.zValue() - 1)
         self.plot_item.scene().addItem(self.right_view_box)
@@ -135,6 +227,7 @@ class WaveformPlot(QtWidgets.QWidget):
         self.preview.setMaximumHeight(120)
         self.preview.showGrid(x=True, y=False, alpha=0.15)
         self.preview.setMouseEnabled(x=False, y=False)
+        self.preview.viewport().installEventFilter(self)
         self.preview_item.showAxis("right")
         self.preview_item.getAxis("left").setPen(pg.mkPen(LEFT_AXIS_COLOR, width=1))
         self.preview_item.getAxis("left").setTextPen(pg.mkPen(LEFT_AXIS_COLOR))
@@ -144,6 +237,7 @@ class WaveformPlot(QtWidgets.QWidget):
         self.preview_right_view_box = pg.ViewBox()
         self.preview_right_view_box.setXLink(self.preview_item.vb)
         self.preview_right_view_box.setZValue(self.preview_item.vb.zValue() - 1)
+        self.preview_right_view_box.setMouseEnabled(x=False, y=False)
         self.preview_item.scene().addItem(self.preview_right_view_box)
         self.preview_item.getAxis("right").linkToView(self.preview_right_view_box)
         self.preview_item.vb.sigResized.connect(self._update_preview_right_view_geometry)
@@ -191,12 +285,12 @@ class WaveformPlot(QtWidgets.QWidget):
         self.preview_right_view_box.addItem(self.preview_right_zero_line, ignoreBounds=True)
 
         self.x_cursors = [
-            pg.InfiniteLine(angle=90, movable=True, pen=pg.mkPen("#ffffff", width=CURSOR_WIDTH)),
-            pg.InfiniteLine(angle=90, movable=True, pen=pg.mkPen("#aaaaaa", width=CURSOR_WIDTH)),
+            _cursor_line(angle=90, color="#ffffff", label="X1", label_position=0.96, label_anchor=(0, 0.5)),
+            _cursor_line(angle=90, color="#aaaaaa", label="X2", label_position=0.90, label_anchor=(1, 0.5)),
         ]
         self.y_cursors = [
-            pg.InfiniteLine(angle=0, movable=True, pen=pg.mkPen("#ffffff", width=CURSOR_WIDTH)),
-            pg.InfiniteLine(angle=0, movable=True, pen=pg.mkPen("#aaaaaa", width=CURSOR_WIDTH)),
+            _cursor_line(angle=0, color="#ffffff", label="Y1", label_position=0.04, label_anchor=(0.5, 1)),
+            _cursor_line(angle=0, color="#aaaaaa", label="Y2", label_position=0.10, label_anchor=(0.5, 0)),
         ]
         for line in self.x_cursors:
             line.setVisible(False)
@@ -215,7 +309,69 @@ class WaveformPlot(QtWidgets.QWidget):
         self.plot.getViewBox().sigXRangeChanged.connect(self._on_x_range_changed)
         self.plot.scene().sigMouseClicked.connect(self._on_plot_scene_clicked)
         self.region.sigRegionChangeFinished.connect(self._on_region_change_finished)
+        self._apply_renderer_mode()
         self.update_axis_highlight()
+
+    def set_renderer_mode(self, mode: str) -> bool:
+        mode = "opengl" if mode == "opengl" else "cpu"
+        if mode == "opengl" and not self.opengl_available:
+            return False
+        previous_mode = self.renderer_mode
+        if mode == previous_mode:
+            return True
+        self.renderer_mode = mode
+        if self._apply_renderer_mode():
+            self._refresh_after_renderer_change()
+            return True
+        self.renderer_mode = previous_mode
+        self._apply_renderer_mode()
+        return False
+
+    def _apply_renderer_mode(self) -> bool:
+        use_opengl = self.renderer_mode == "opengl"
+        try:
+            self.plot.useOpenGL(use_opengl)
+            self.preview.useOpenGL(use_opengl)
+            self.preview.viewport().installEventFilter(self)
+        except Exception as exc:  # noqa: BLE001 - keep experimental GPU mode from breaking startup.
+            if use_opengl:
+                self.opengl_available = False
+                print(f"OpenGL rendering disabled: {exc}", file=sys.stderr)
+            return False
+        self._update_right_view_geometry()
+        self._update_preview_right_view_geometry()
+        return True
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802 - Qt override name.
+        if watched is self.preview.viewport() and event.type() == QtCore.QEvent.Type.Wheel:
+            self._zoom_preview_from_wheel(event)
+            return True
+        return super().eventFilter(watched, event)
+
+    def _refresh_after_renderer_change(self) -> None:
+        if self.data is None:
+            return
+        x_range = tuple(float(value) for value in self.view_box.viewRange()[0])
+        group_y_ranges = {
+            group: tuple(float(value) for value in self._view_box_for_group(group).viewRange()[1])
+            for group in ("left", "right")
+        }
+        preview_x_range = tuple(float(value) for value in self.preview_item.vb.viewRange()[0])
+        preview_y_ranges = {
+            "left": tuple(float(value) for value in self.preview_item.vb.viewRange()[1]),
+            "right": tuple(float(value) for value in self.preview_right_view_box.viewRange()[1]),
+        }
+        self._redraw()
+        self.plot.setXRange(x_range[0], x_range[1], padding=0.0)
+        self.preview.setXRange(preview_x_range[0], preview_x_range[1], padding=0.0)
+        for group, y_range in group_y_ranges.items():
+            self._view_box_for_group(group).setYRange(y_range[0], y_range[1], padding=0.0)
+        self.preview_item.vb.setYRange(preview_y_ranges["left"][0], preview_y_ranges["left"][1], padding=0.0)
+        self.preview_right_view_box.setYRange(preview_y_ranges["right"][0], preview_y_ranges["right"][1], padding=0.0)
+        self._move_y_cursors_to_group(self.cursor_axis_group, preserve_visual_position=True)
+        self._update_cursor_pens()
+        self._flush_pending_preview_range()
+        self.update()
 
     def set_data(self, data: WaveformData) -> None:
         self.data = data
@@ -292,12 +448,15 @@ class WaveformPlot(QtWidgets.QWidget):
         return self.right_view_box if self.active_y_group == "right" else self.view_box
 
     def toggle_active_y_group(self) -> None:
-        self.active_y_group = "right" if self.active_y_group == "left" else "left"
-        self.update_axis_highlight()
+        self.set_active_y_group("right" if self.active_y_group == "left" else "left")
 
     def set_active_y_group(self, group: str) -> None:
-        self.active_y_group = "right" if group == "right" else "left"
+        group = "right" if group == "right" else "left"
+        if group == self.active_y_group:
+            return
+        self.active_y_group = group
         self.update_axis_highlight()
+        self.activeAxisGroupChanged.emit(self.active_y_group)
 
     def set_cursor_axis_group(self, group: str, *, preserve_visual_position: bool = True) -> None:
         group = "right" if group == "right" else "left"
@@ -404,15 +563,15 @@ class WaveformPlot(QtWidgets.QWidget):
                 self.right_view_box.addItem(curve)
             else:
                 self.plot_item.addItem(curve)
-            _configure_curve_performance(curve)
-            self.legend.addItem(curve, channel.name)
+            _configure_curve_performance(curve, method=self._main_downsampling_method())
+            self.legend.addItem(curve, self._legend_label(channel.name))
             preview_curve = pg.PlotDataItem(self.data.time[mask], channel.values[mask], pen=preview_pen)
             preview_curve.setZValue(CURVE_Z)
             if group == "right":
                 self.preview_right_view_box.addItem(preview_curve)
             else:
                 self.preview_item.addItem(preview_curve)
-            _configure_curve_performance(preview_curve)
+            _configure_curve_performance(preview_curve, method=PREVIEW_DOWNSAMPLE_METHOD)
             self.curves[channel.name] = curve
             self.curve_groups[channel.name] = group
             self.preview_curves[channel.name] = preview_curve
@@ -485,9 +644,11 @@ class WaveformPlot(QtWidgets.QWidget):
         primary = "#ffffff" if highlighted else "#777777"
         secondary = "#aaaaaa" if highlighted else "#555555"
         for line in self.x_cursors[:1] + self.y_cursors[:1]:
-            line.setPen(pg.mkPen(primary, width=CURSOR_WIDTH))
+            line.setPen(_cursor_pen(primary))
+            line.label.setColor(primary)
         for line in self.x_cursors[1:] + self.y_cursors[1:]:
-            line.setPen(pg.mkPen(secondary, width=CURSOR_WIDTH))
+            line.setPen(_cursor_pen(secondary))
+            line.label.setColor(secondary)
 
     def _place_initial_cursors(self) -> None:
         self._place_x_cursors_in_view()
@@ -507,7 +668,7 @@ class WaveformPlot(QtWidgets.QWidget):
             return
         self._syncing_region = True
         self.region.setRegion(ranges)
-        self._set_preview_range_for_region(ranges[0], ranges[1])
+        self._schedule_preview_range_for_region(ranges[0], ranges[1])
         self._syncing_region = False
         self.viewRangeChanged.emit(tuple(float(value) for value in ranges))
 
@@ -540,6 +701,8 @@ class WaveformPlot(QtWidgets.QWidget):
         self._syncing_view = False
 
     def _set_preview_range_for_region(self, low: float, high: float) -> None:
+        self._pending_preview_range = None
+        self._preview_range_timer.stop()
         region_width = abs(high - low)
         if not np.isfinite(region_width) or region_width <= 0:
             return
@@ -548,6 +711,64 @@ class WaveformPlot(QtWidgets.QWidget):
         preview_low = center - preview_width / 2.0
         preview_high = center + preview_width / 2.0
         self.preview.setXRange(preview_low, preview_high, padding=0.0)
+
+    def _schedule_preview_range_for_region(self, low: float, high: float) -> None:
+        self._pending_preview_range = (low, high)
+        if not self._preview_range_timer.isActive():
+            self._preview_range_timer.start()
+
+    def _flush_pending_preview_range(self) -> None:
+        if self._pending_preview_range is None:
+            return
+        low, high = self._pending_preview_range
+        self._set_preview_range_for_region(low, high)
+
+    def _zoom_preview_from_wheel(self, event: QtGui.QWheelEvent) -> None:
+        delta = _wheel_delta(event)
+        if delta == 0:
+            event.ignore()
+            return
+        preview_low, preview_high = self.preview_item.vb.viewRange()[0]
+        preview_width = preview_high - preview_low
+        if not np.isfinite(preview_width) or preview_width <= 0:
+            event.ignore()
+            return
+
+        region_low, region_high = self.region.getRegion()
+        region_start_fraction = (region_low - preview_low) / preview_width
+        region_end_fraction = (region_high - preview_low) / preview_width
+
+        wheel_position = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        scene_position = self.preview.mapToScene(wheel_position)
+        zoom_center = float(self.preview_item.vb.mapSceneToView(scene_position).x())
+        if not np.isfinite(zoom_center):
+            zoom_center = (preview_low + preview_high) / 2.0
+
+        factor = PREVIEW_WHEEL_ZOOM_IN_FACTOR if delta > 0 else PREVIEW_WHEEL_ZOOM_OUT_FACTOR
+        new_preview_low = zoom_center + (preview_low - zoom_center) * factor
+        new_preview_high = zoom_center + (preview_high - zoom_center) * factor
+        new_preview_width = new_preview_high - new_preview_low
+        if not np.isfinite(new_preview_width) or new_preview_width <= 0:
+            event.ignore()
+            return
+
+        new_region_low = new_preview_low + region_start_fraction * new_preview_width
+        new_region_high = new_preview_low + region_end_fraction * new_preview_width
+        if new_region_low == new_region_high:
+            event.ignore()
+            return
+
+        self._pending_preview_range = None
+        self._preview_range_timer.stop()
+        self._syncing_view = True
+        self._syncing_region = True
+        self.preview.setXRange(new_preview_low, new_preview_high, padding=0.0)
+        self.region.setRegion((new_region_low, new_region_high))
+        self.plot.setXRange(new_region_low, new_region_high, padding=0.0)
+        self._syncing_region = False
+        self._syncing_view = False
+        self.viewRangeChanged.emit((float(new_region_low), float(new_region_high)))
+        event.accept()
 
     def _update_right_view_geometry(self) -> None:
         self.right_view_box.setGeometry(self.plot_item.vb.sceneBoundingRect())
@@ -620,6 +841,32 @@ class WaveformPlot(QtWidgets.QWidget):
 
     def _curve_z_value(self, channel_name: str) -> int:
         return FOCUSED_CURVE_Z if channel_name == self.focused_channel else CURVE_Z
+
+    def _mark_interacting(self) -> None:
+        if not self._interaction_downsampling_active:
+            self._interaction_downsampling_active = True
+            self._set_main_curve_downsampling(INTERACTION_DOWNSAMPLE_METHOD)
+        self._interaction_timer.start()
+
+    def _restore_quality_downsampling(self) -> None:
+        if not self._interaction_downsampling_active:
+            return
+        self._interaction_downsampling_active = False
+        self._set_main_curve_downsampling(MAIN_DOWNSAMPLE_METHOD)
+        self._flush_pending_preview_range()
+
+    def _set_main_curve_downsampling(self, method: str) -> None:
+        for curve in self.curves.values():
+            _set_curve_downsampling_method(curve, method)
+
+    def _main_downsampling_method(self) -> str:
+        return INTERACTION_DOWNSAMPLE_METHOD if self._interaction_downsampling_active else MAIN_DOWNSAMPLE_METHOD
+
+    def _focused_trace_free_pan_enabled(self) -> bool:
+        return self.focused_channel is not None
+
+    def _legend_label(self, channel_name: str) -> str:
+        return f"{channel_name} ({self._channel_group(channel_name)} axis)"
 
     def _update_axis_labels(self) -> None:
         left_unit = self._group_unit("left")
@@ -769,10 +1016,67 @@ def _normalized_axis_group(group: str) -> str:
     return "right" if group == "right" else "left"
 
 
-def _configure_curve_performance(curve: pg.PlotDataItem) -> None:
+def _configure_curve_performance(curve: pg.PlotDataItem, *, method: str) -> None:
     curve.setClipToView(True)
-    curve.setDownsampling(auto=True, method="peak")
+    curve.setDownsampling(auto=True, method=method)
     curve.setSkipFiniteCheck(True)
+
+
+def _set_curve_downsampling_method(curve: pg.PlotDataItem, method: str) -> None:
+    if curve.opts.get("autoDownsample") is True and curve.opts.get("downsampleMethod") == method:
+        return
+    curve.setDownsampling(auto=True, method=method)
+
+
+def _cursor_line(
+    *,
+    angle: int,
+    color: str,
+    label: str,
+    label_position: float,
+    label_anchor: tuple[float, float],
+) -> pg.InfiniteLine:
+    line = pg.InfiniteLine(
+        angle=angle,
+        movable=True,
+        pen=_cursor_pen(color),
+    )
+    line.label = CursorLineLabel(
+        line,
+        text=label,
+        **_cursor_label_opts(color, position=label_position, anchor=label_anchor),
+    )
+    line.label.setCursor(QtCore.Qt.CursorShape.SizeHorCursor if angle == 90 else QtCore.Qt.CursorShape.SizeVerCursor)
+    return line
+
+
+def _cursor_pen(color: str) -> QtGui.QPen:
+    return pg.mkPen(color, width=CURSOR_WIDTH, style=QtCore.Qt.PenStyle.DashLine)
+
+
+def _cursor_label_opts(color: str, *, position: float, anchor: tuple[float, float]) -> dict[str, object]:
+    return {
+        "position": position,
+        "anchors": [anchor, anchor],
+        "color": color,
+        "fill": CURSOR_LABEL_FILL,
+        "border": CURSOR_LABEL_BORDER,
+    }
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _opengl_available() -> bool:
+    try:
+        from PySide6 import QtOpenGLWidgets
+
+        widget = QtOpenGLWidgets.QOpenGLWidget()
+        widget.deleteLater()
+    except Exception:
+        return False
+    return True
 
 
 def _dimmed_curve_color(color: str) -> QtGui.QColor:

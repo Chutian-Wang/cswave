@@ -20,6 +20,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.waveform_plot = WaveformPlot()
         self.waveform_plot.cursorChanged.connect(self._update_cursor_panel)
+        self.waveform_plot.activeAxisGroupChanged.connect(self._sync_axis_group_selector)
 
         self.channel_panel = QtWidgets.QWidget()
         self.channel_layout = QtWidgets.QVBoxLayout(self.channel_panel)
@@ -76,38 +77,69 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_actions(self) -> None:
         toolbar = self.addToolBar("Main")
+        toolbar.setObjectName("MainToolbar")
         toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
+
+        toolbar.addWidget(_toolbar_section_label("File"))
 
         open_action = QtGui.QAction("Open CSV", self)
         open_action.setShortcut(QtGui.QKeySequence.Open)
         open_action.triggered.connect(self._open_dialog)
         toolbar.addAction(open_action)
 
+        toolbar.addSeparator()
+        toolbar.addWidget(_toolbar_section_label("View"))
+
         reset_action = QtGui.QAction("Reset View", self)
         reset_action.triggered.connect(self.waveform_plot.reset_view)
         toolbar.addAction(reset_action)
 
-        axis_setup_action = QtGui.QAction("Axis Groups", self)
+        axis_setup_action = QtGui.QAction("Axis Groups...", self)
         axis_setup_action.setToolTip("Configure left/right axis grouping, units, and Y ranges")
         axis_setup_action.triggered.connect(self._open_axis_setup)
         toolbar.addAction(axis_setup_action)
 
         toolbar.addSeparator()
-        toolbar.addWidget(QtWidgets.QLabel("Zoom axis"))
+        toolbar.addWidget(_toolbar_section_label("Navigate"))
+        toolbar.addWidget(_toolbar_field_label("Y group"))
+        self.axis_group_selector = QtWidgets.QComboBox()
+        self.axis_group_selector.addItem("Left", "left")
+        self.axis_group_selector.addItem("Right", "right")
+        self.axis_group_selector.setToolTip("Active Y axis group for Y pan and zoom")
+        self.axis_group_selector.setMinimumContentsLength(5)
+        self._sync_axis_group_selector()
+        self.axis_group_selector.currentIndexChanged.connect(self._axis_group_changed)
+        toolbar.addWidget(self.axis_group_selector)
+
+        toolbar.addWidget(_toolbar_field_label("Zoom"))
         self.zoom_axis_selector = QtWidgets.QComboBox()
         self.zoom_axis_selector.addItems(["X", "Y"])
         self.zoom_axis_selector.setToolTip("Axis used by toolbar zoom buttons")
+        self.zoom_axis_selector.setMinimumContentsLength(1)
         toolbar.addWidget(self.zoom_axis_selector)
 
-        zoom_in_action = QtGui.QAction("Zoom In", self)
+        zoom_in_action = QtGui.QAction("+", self)
         zoom_in_action.setToolTip("Zoom in on the selected axis")
         zoom_in_action.triggered.connect(lambda: self.waveform_plot.zoom_in(self._selected_zoom_axis()))
         toolbar.addAction(zoom_in_action)
 
-        zoom_out_action = QtGui.QAction("Zoom Out", self)
+        zoom_out_action = QtGui.QAction("-", self)
         zoom_out_action.setToolTip("Zoom out on the selected axis")
         zoom_out_action.triggered.connect(lambda: self.waveform_plot.zoom_out(self._selected_zoom_axis()))
         toolbar.addAction(zoom_out_action)
+
+        toolbar.addSeparator()
+        toolbar.addWidget(_toolbar_section_label("Display"))
+        toolbar.addWidget(_toolbar_field_label("Renderer"))
+        self.renderer_selector = QtWidgets.QComboBox()
+        self.renderer_selector.addItem("CPU", "cpu")
+        self.renderer_selector.addItem("OpenGL", "opengl")
+        self.renderer_selector.setToolTip("Rendering backend for waveform drawing")
+        self.renderer_selector.setMinimumContentsLength(6)
+        self._sync_renderer_selector()
+        self.renderer_selector.currentIndexChanged.connect(self._renderer_changed)
+        toolbar.addWidget(self.renderer_selector)
 
     def _open_dialog(self) -> None:
         path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
@@ -126,15 +158,73 @@ class MainWindow(QtWidgets.QMainWindow):
     def _selected_zoom_axis(self) -> str:
         return self.zoom_axis_selector.currentText().lower()
 
+    def _sync_axis_group_selector(self, *_args: object) -> None:
+        current_index = self.axis_group_selector.findData(self.waveform_plot.active_y_group)
+        if current_index < 0:
+            return
+        self.axis_group_selector.blockSignals(True)
+        self.axis_group_selector.setCurrentIndex(current_index)
+        self.axis_group_selector.blockSignals(False)
+
+    def _axis_group_changed(self) -> None:
+        group = self.axis_group_selector.currentData()
+        if group not in {"left", "right"}:
+            return
+        self.waveform_plot.set_active_y_group(group)
+        self.statusBar().showMessage(f"Y control group: {self.waveform_plot.active_y_group.capitalize()} axis")
+
+    def _sync_renderer_selector(self) -> None:
+        opengl_index = self.renderer_selector.findData("opengl")
+        if opengl_index >= 0:
+            item = self.renderer_selector.model().item(opengl_index)
+            if item is not None:
+                item.setEnabled(self.waveform_plot.opengl_available)
+            self.renderer_selector.setItemData(
+                opengl_index,
+                "Use OpenGL rendering" if self.waveform_plot.opengl_available else "OpenGL is not available",
+                QtCore.Qt.ItemDataRole.ToolTipRole,
+            )
+        current_index = self.renderer_selector.findData(self.waveform_plot.renderer_mode)
+        if current_index >= 0:
+            self.renderer_selector.blockSignals(True)
+            self.renderer_selector.setCurrentIndex(current_index)
+            self.renderer_selector.blockSignals(False)
+
+    def _renderer_changed(self) -> None:
+        mode = self.renderer_selector.currentData()
+        if mode not in {"cpu", "opengl"}:
+            return
+        if self.waveform_plot.set_renderer_mode(mode):
+            self.statusBar().showMessage(f"Renderer: {self.renderer_selector.currentText()}")
+            self._sync_renderer_selector()
+            return
+        self._sync_renderer_selector()
+        QtWidgets.QMessageBox.warning(self, "Renderer unavailable", "OpenGL rendering is not available on this system.")
+
     def _build_shortcuts(self) -> None:
         toggle_axis = QtGui.QShortcut(QtGui.QKeySequence("T"), self)
         toggle_axis.activated.connect(self._toggle_axis_group)
+        reset_view = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+R"), self)
+        reset_view.activated.connect(self.waveform_plot.reset_view)
+        reset_cursors = QtGui.QShortcut(QtGui.QKeySequence("Shift+R"), self)
+        reset_cursors.activated.connect(self._reset_cursors)
+        toggle_x_cursors = QtGui.QShortcut(QtGui.QKeySequence("X"), self)
+        toggle_x_cursors.activated.connect(self._toggle_x_cursors)
+        toggle_y_cursors = QtGui.QShortcut(QtGui.QKeySequence("Y"), self)
+        toggle_y_cursors.activated.connect(self._toggle_y_cursors)
 
     def _toggle_axis_group(self) -> None:
         self.waveform_plot.toggle_active_y_group()
+        self._sync_axis_group_selector()
         self.statusBar().showMessage(
             f"Y control group: {self.waveform_plot.active_y_group.capitalize()} axis"
         )
+
+    def _toggle_x_cursors(self) -> None:
+        self.x_cursor_toggle.setChecked(not self.x_cursor_toggle.isChecked())
+
+    def _toggle_y_cursors(self) -> None:
+        self.y_cursor_toggle.setChecked(not self.y_cursor_toggle.isChecked())
 
     def _open_axis_setup(self) -> None:
         if self.data is None:
@@ -152,23 +242,50 @@ class MainWindow(QtWidgets.QMainWindow):
         panel = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(panel)
         layout.setContentsMargins(10, 10, 10, 10)
-        layout.addWidget(self.x_cursor_toggle)
-        layout.addWidget(self.y_cursor_toggle)
+        layout.setSpacing(10)
+
+        controls = QtWidgets.QGroupBox("Controls")
+        controls_layout = QtWidgets.QGridLayout(controls)
+        controls_layout.setContentsMargins(8, 8, 8, 8)
+        controls_layout.addWidget(self.x_cursor_toggle, 0, 0)
+        controls_layout.addWidget(self.y_cursor_toggle, 0, 1)
         reset_cursors = QtWidgets.QPushButton("Reset Cursors")
         reset_cursors.clicked.connect(self._reset_cursors)
-        layout.addWidget(reset_cursors)
-        layout.addWidget(QtWidgets.QLabel("Cursor axis group"))
-        layout.addWidget(self.cursor_axis_selector)
-        layout.addWidget(QtWidgets.QLabel("Active channel"))
-        layout.addWidget(self.active_channel)
+        controls_layout.addWidget(reset_cursors, 1, 0, 1, 2)
+        controls_layout.addWidget(QtWidgets.QLabel("Cursor group"), 2, 0)
+        controls_layout.addWidget(self.cursor_axis_selector, 2, 1)
+        controls_layout.addWidget(QtWidgets.QLabel("Active channel"), 3, 0)
+        controls_layout.addWidget(self.active_channel, 3, 1)
+        controls_layout.setColumnStretch(1, 1)
+        layout.addWidget(controls)
 
-        grid = QtWidgets.QFormLayout()
-        for name, label in self.cursor_labels.items():
-            label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-            grid.addRow(name, label)
-        layout.addLayout(grid)
+        layout.addWidget(self._cursor_group_box("X Positions", [("X1", "X1"), ("X2", "X2"), ("Delta X", "dX")]))
+        layout.addWidget(self._cursor_group_box("Y Positions", [("Y1", "Y1"), ("Y2", "Y2"), ("Delta Y", "dY")]))
+        layout.addWidget(
+            self._cursor_group_box(
+                "Active Channel",
+                [("Y at X1", "Active Y1"), ("Y at X2", "Active Y2"), ("Delta", "Active dY")],
+            )
+        )
         layout.addStretch()
         return panel
+
+    def _cursor_group_box(self, title: str, rows: list[tuple[str, str]]) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox(title)
+        grid = QtWidgets.QGridLayout(box)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setHorizontalSpacing(12)
+        for row, (display_name, key) in enumerate(rows):
+            name_label = QtWidgets.QLabel(display_name)
+            value_label = self.cursor_labels[key]
+            value_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            value_label.setMinimumWidth(92)
+            value_label.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+            grid.addWidget(name_label, row, 0)
+            grid.addWidget(value_label, row, 1)
+        grid.setColumnStretch(1, 1)
+        return box
 
     def _rebuild_channels(self, channels: list[ChannelData]) -> None:
         while self.channel_layout.count() > 2:
@@ -300,6 +417,18 @@ class MainWindow(QtWidgets.QMainWindow):
         area.setWidgetResizable(True)
         area.setWidget(widget)
         return area
+
+
+def _toolbar_section_label(text: str) -> QtWidgets.QLabel:
+    label = QtWidgets.QLabel(text)
+    label.setStyleSheet("QLabel { font-weight: 600; margin-left: 6px; margin-right: 2px; }")
+    return label
+
+
+def _toolbar_field_label(text: str) -> QtWidgets.QLabel:
+    label = QtWidgets.QLabel(text)
+    label.setStyleSheet("QLabel { color: #666; margin-left: 4px; }")
+    return label
 
 
 def _format_value(value: float | None) -> str:
