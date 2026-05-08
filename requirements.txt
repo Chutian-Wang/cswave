@@ -1,0 +1,5 @@
+numpy>=1.24
+pandas>=2.0
+PySide6>=6.6
+pyqtgraph>=0.13
+pytest>=7.0
