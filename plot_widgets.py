@@ -4,15 +4,25 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
-import pyqtgraph as pg
-from PySide6 import QtCore, QtGui, QtWidgets
 
 from csv_loader import ChannelData, WaveformData
+
+import pyqtgraph as pg
+from PySide6 import QtCore, QtGui, QtWidgets
 
 
 CURSOR_WIDTH = 2.25
 ZERO_LINE_WIDTH = 1.4
+PREVIEW_REGION_BOUNDARY_WIDTH = 1.5
 PREVIEW_REGION_FRACTION = 0.30
+CURVE_WIDTH = 1.6
+PREVIEW_CURVE_WIDTH = 1.0
+FOCUSED_CURVE_WIDTH = 3.0
+FOCUSED_PREVIEW_CURVE_WIDTH = 1.8
+DIMMED_CURVE_ALPHA = 70
+ZERO_LINE_Z = -100
+CURVE_Z = 1
+FOCUSED_CURVE_Z = 50
 LEFT_AXIS_COLOR = "#ffd400"
 RIGHT_AXIS_COLOR = "#00d7ff"
 
@@ -92,6 +102,7 @@ class WaveformPlot(QtWidgets.QWidget):
         self.curve_groups: dict[str, str] = {}
         self.preview_curves: dict[str, pg.PlotDataItem] = {}
         self.preview_curve_groups: dict[str, str] = {}
+        self.focused_channel: str | None = None
         self._syncing_region = False
         self._syncing_view = False
         self.active_y_group = "left"
@@ -136,7 +147,10 @@ class WaveformPlot(QtWidgets.QWidget):
         self.preview_item.getAxis("right").linkToView(self.preview_right_view_box)
         self.preview_item.vb.sigResized.connect(self._update_preview_right_view_geometry)
 
-        self.region = pg.LinearRegionItem()
+        self.region = pg.LinearRegionItem(
+            pen=pg.mkPen((200, 200, 100), width=PREVIEW_REGION_BOUNDARY_WIDTH),
+            hoverPen=pg.mkPen((255, 0, 0), width=PREVIEW_REGION_BOUNDARY_WIDTH),
+        )
         self.region.setZValue(20)
         self.preview.addItem(self.region)
 
@@ -146,7 +160,7 @@ class WaveformPlot(QtWidgets.QWidget):
             movable=False,
             pen=pg.mkPen(LEFT_AXIS_COLOR, width=ZERO_LINE_WIDTH, style=QtCore.Qt.PenStyle.DashLine),
         )
-        self.zero_line.setZValue(15)
+        self.zero_line.setZValue(ZERO_LINE_Z)
         self.plot.addItem(self.zero_line, ignoreBounds=True)
 
         self.right_zero_line = pg.InfiniteLine(
@@ -155,7 +169,7 @@ class WaveformPlot(QtWidgets.QWidget):
             movable=False,
             pen=pg.mkPen(RIGHT_AXIS_COLOR, width=ZERO_LINE_WIDTH, style=QtCore.Qt.PenStyle.DashLine),
         )
-        self.right_zero_line.setZValue(15)
+        self.right_zero_line.setZValue(ZERO_LINE_Z)
         self.right_view_box.addItem(self.right_zero_line, ignoreBounds=True)
 
         self.preview_zero_line = pg.InfiniteLine(
@@ -170,6 +184,8 @@ class WaveformPlot(QtWidgets.QWidget):
             movable=False,
             pen=pg.mkPen(RIGHT_AXIS_COLOR, width=1.0, style=QtCore.Qt.PenStyle.DashLine),
         )
+        self.preview_zero_line.setZValue(ZERO_LINE_Z)
+        self.preview_right_zero_line.setZValue(ZERO_LINE_Z)
         self.preview.addItem(self.preview_zero_line, ignoreBounds=True)
         self.preview_right_view_box.addItem(self.preview_right_zero_line, ignoreBounds=True)
 
@@ -196,11 +212,13 @@ class WaveformPlot(QtWidgets.QWidget):
         layout.addWidget(self.preview)
 
         self.plot.getViewBox().sigXRangeChanged.connect(self._on_x_range_changed)
+        self.plot.scene().sigMouseClicked.connect(self._on_plot_scene_clicked)
         self.region.sigRegionChangeFinished.connect(self._on_region_change_finished)
         self.update_axis_highlight()
 
     def set_data(self, data: WaveformData) -> None:
         self.data = data
+        self.focused_channel = None
         self.axis_settings = {
             channel.name: AxisGroupSettings(group=_default_group_for_channel(channel), unit=channel.unit or "")
             for channel in data.channels
@@ -216,6 +234,8 @@ class WaveformPlot(QtWidgets.QWidget):
 
     def set_selected_channels(self, selected: set[str]) -> None:
         self.selected_channels = set(selected)
+        if self.focused_channel not in self.selected_channels:
+            self.focused_channel = None
         self._redraw()
 
     def set_x_cursors_visible(self, visible: bool) -> None:
@@ -301,16 +321,21 @@ class WaveformPlot(QtWidgets.QWidget):
         ]
 
     def update_axis_settings(self, settings: dict[str, AxisGroupSettings]) -> None:
+        changed_range_groups = self._groups_with_changed_membership(settings)
         previously_disabled = {
             name for name, setting in self.axis_settings.items()
             if setting.group == "disabled"
         }
+        if changed_range_groups:
+            settings = self._settings_with_recalculated_group_ranges(settings, changed_range_groups)
         self.axis_settings = settings
         newly_enabled = {
             name for name, setting in settings.items()
             if setting.group != "disabled" and name in previously_disabled
         }
         self.selected_channels.update(newly_enabled)
+        if self.focused_channel is not None and self._channel_group(self.focused_channel) == "disabled":
+            self.focused_channel = None
         self._redraw()
         self.apply_axis_ranges(default_missing=True)
         self.update_axis_highlight()
@@ -366,15 +391,21 @@ class WaveformPlot(QtWidgets.QWidget):
             if group == "disabled":
                 continue
             mask = np.isfinite(self.data.time) & np.isfinite(channel.values)
-            pen = pg.mkPen(channel.color, width=1.6)
-            preview_pen = pg.mkPen(channel.color, width=1.0)
+            pen = pg.mkPen(channel.color, width=CURVE_WIDTH)
+            preview_pen = pg.mkPen(channel.color, width=PREVIEW_CURVE_WIDTH)
             curve = pg.PlotDataItem(self.data.time[mask], channel.values[mask], pen=pen)
+            curve.setZValue(CURVE_Z)
+            curve.setCurveClickable(True, width=8)
+            curve.sigClicked.connect(
+                lambda _curve, event, name=channel.name: self._on_curve_clicked(name, event)
+            )
             if group == "right":
                 self.right_view_box.addItem(curve)
             else:
                 self.plot_item.addItem(curve)
             self.legend.addItem(curve, channel.name)
             preview_curve = pg.PlotDataItem(self.data.time[mask], channel.values[mask], pen=preview_pen)
+            preview_curve.setZValue(CURVE_Z)
             if group == "right":
                 self.preview_right_view_box.addItem(preview_curve)
             else:
@@ -385,6 +416,7 @@ class WaveformPlot(QtWidgets.QWidget):
             self.preview_curve_groups[channel.name] = group
         self._update_right_view_geometry()
         self._update_preview_right_view_geometry()
+        self._update_curve_focus()
 
     def _clear_plot_curves(self) -> None:
         self.legend.clear()
@@ -476,6 +508,23 @@ class WaveformPlot(QtWidgets.QWidget):
         self._syncing_region = False
         self.viewRangeChanged.emit(tuple(float(value) for value in ranges))
 
+    def _on_curve_clicked(self, channel_name: str, event: object) -> None:
+        if hasattr(event, "accept"):
+            event.accept()
+        self.focused_channel = channel_name
+        self.set_active_y_group(self._channel_group(channel_name))
+        self._update_curve_focus()
+
+    def _on_plot_scene_clicked(self, event: object) -> None:
+        button = event.button() if hasattr(event, "button") else None
+        is_accepted = event.isAccepted() if hasattr(event, "isAccepted") else False
+        if button != QtCore.Qt.MouseButton.LeftButton or is_accepted:
+            return
+        if self.focused_channel is None:
+            return
+        self.focused_channel = None
+        self._update_curve_focus()
+
     def _on_region_change_finished(self) -> None:
         if self._syncing_region:
             return
@@ -537,6 +586,40 @@ class WaveformPlot(QtWidgets.QWidget):
         self._update_cursor_pens()
         self._update_axis_labels()
 
+    def _update_curve_focus(self) -> None:
+        for name, curve in self.curves.items():
+            channel = self._channel_by_name(name)
+            if channel is None:
+                continue
+            curve.setPen(self._curve_pen(channel, width=CURVE_WIDTH))
+            curve.setZValue(self._curve_z_value(name))
+
+        for name, curve in self.preview_curves.items():
+            channel = self._channel_by_name(name)
+            if channel is None:
+                continue
+            curve.setPen(self._curve_pen(channel, width=PREVIEW_CURVE_WIDTH, preview=True))
+            curve.setZValue(self._curve_z_value(name))
+
+        focused_group = self._channel_group(self.focused_channel) if self.focused_channel is not None else None
+        self.right_view_box.setZValue(self.view_box.zValue() + 1 if focused_group == "right" else self.view_box.zValue() - 1)
+        self.preview_right_view_box.setZValue(
+            self.preview_item.vb.zValue() + 1 if focused_group == "right" else self.preview_item.vb.zValue() - 1
+        )
+
+    def _curve_pen(self, channel: ChannelData, *, width: float, preview: bool = False) -> QtGui.QPen:
+        if self.focused_channel is None:
+            return pg.mkPen(channel.color, width=width)
+        if channel.name == self.focused_channel:
+            focus_width = FOCUSED_PREVIEW_CURVE_WIDTH if preview else FOCUSED_CURVE_WIDTH
+            return pg.mkPen(channel.color, width=focus_width)
+        color = QtGui.QColor(channel.color)
+        color.setAlpha(DIMMED_CURVE_ALPHA)
+        return pg.mkPen(color, width=width)
+
+    def _curve_z_value(self, channel_name: str) -> int:
+        return FOCUSED_CURVE_Z if channel_name == self.focused_channel else CURVE_Z
+
     def _update_axis_labels(self) -> None:
         left_unit = self._group_unit("left")
         right_unit = self._group_unit("right")
@@ -578,6 +661,38 @@ class WaveformPlot(QtWidgets.QWidget):
             y_max = y_min + 1.0
         return y_min, y_max
 
+    def _groups_with_changed_membership(self, settings: dict[str, AxisGroupSettings]) -> set[str]:
+        changed_groups: set[str] = set()
+        for name, new_setting in settings.items():
+            old_group = self._channel_group(name)
+            new_group = _normalized_axis_group(new_setting.group)
+            if old_group == new_group:
+                continue
+            if old_group in {"left", "right"}:
+                changed_groups.add(old_group)
+            if new_group in {"left", "right"}:
+                changed_groups.add(new_group)
+        return changed_groups
+
+    def _settings_with_recalculated_group_ranges(
+        self,
+        settings: dict[str, AxisGroupSettings],
+        groups: set[str],
+    ) -> dict[str, AxisGroupSettings]:
+        result = dict(settings)
+        for group in groups:
+            y_min, y_max = self._data_range_for_group(group, settings)
+            for name, setting in list(result.items()):
+                if _normalized_axis_group(setting.group) != group:
+                    continue
+                result[name] = AxisGroupSettings(
+                    group=setting.group,
+                    unit=setting.unit,
+                    y_min=y_min,
+                    y_max=y_max,
+                )
+        return result
+
     def _channel_group(self, channel_name: str) -> str:
         settings = self.axis_settings.get(channel_name)
         if settings is None:
@@ -585,6 +700,34 @@ class WaveformPlot(QtWidgets.QWidget):
         if settings.group == "disabled":
             return "disabled"
         return "right" if settings.group == "right" else "left"
+
+    def _data_range_for_group(
+        self,
+        group: str,
+        settings: dict[str, AxisGroupSettings] | None = None,
+    ) -> tuple[float, float]:
+        if self.data is None:
+            return 0.0, 1.0
+        values = []
+        for channel in self.data.channels:
+            if settings is None:
+                channel_group = self._channel_group(channel.name)
+            else:
+                channel_setting = settings.get(channel.name)
+                channel_group = _normalized_axis_group(channel_setting.group) if channel_setting is not None else "left"
+            if channel_group != group:
+                continue
+            finite_values = channel.values[np.isfinite(channel.values)]
+            if finite_values.size:
+                values.append(finite_values)
+        if not values:
+            return 0.0, 1.0
+        combined = np.concatenate(values)
+        y_min = float(np.nanmin(combined))
+        y_max = float(np.nanmax(combined))
+        if y_min == y_max:
+            y_max = y_min + 1.0
+        return y_min, y_max
 
     def _group_unit(self, group: str) -> str:
         units = {
@@ -617,6 +760,12 @@ def _default_group_for_channel(channel: ChannelData) -> str:
     if unit == "a":
         return "right"
     return "disabled"
+
+
+def _normalized_axis_group(group: str) -> str:
+    if group == "disabled":
+        return "disabled"
+    return "right" if group == "right" else "left"
 
 
 def _interpolate(time: np.ndarray, values: np.ndarray, x_value: float | None) -> float | None:

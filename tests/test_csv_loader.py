@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 
@@ -70,3 +72,15 @@ def test_strips_bom_from_headers(tmp_path: Path) -> None:
 
     assert data.time_column == "TimeOutput"
     assert [channel.name for channel in data.channels] == ["V"]
+
+
+def test_main_imports_with_windows_python_312_import_order() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import main; print('ok')"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout

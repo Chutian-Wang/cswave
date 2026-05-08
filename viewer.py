@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from PySide6 import QtCore, QtGui, QtWidgets
 
 from csv_loader import ChannelData, WaveformData, load_csv_waveform
+from PySide6 import QtCore, QtGui, QtWidgets
 from plot_widgets import AxisGroupSettings, WaveformPlot
 
 
