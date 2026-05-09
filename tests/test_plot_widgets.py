@@ -9,7 +9,7 @@ import pyqtgraph as pg
 import pytest
 
 from csv_loader import ChannelData, WaveformData
-from plot_widgets import AxisGroupSettings, OPENGL_ENV_VAR, WaveformPlot, _env_flag
+from plot_widgets import AxisGroupSettings, OPENGL_ENV_VAR, WaveformPlot, _env_flag, _magnitude_to_db
 from PySide6 import QtCore, QtWidgets
 
 
@@ -131,6 +131,15 @@ def test_opengl_env_flag_is_opt_in(monkeypatch) -> None:
 
     monkeypatch.setenv(OPENGL_ENV_VAR, "false")
     assert _env_flag(OPENGL_ENV_VAR) is False
+
+
+def test_magnitude_to_db_uses_amplitude_db_and_finite_floor() -> None:
+    values = _magnitude_to_db(np.array([1.0, 10.0, 0.0]))
+
+    assert values[0] == pytest.approx(0.0)
+    assert values[1] == pytest.approx(20.0)
+    assert np.isfinite(values[2])
+    assert values[2] < -6000.0
 
 
 def test_renderer_mode_rejects_unavailable_opengl(tmp_path) -> None:

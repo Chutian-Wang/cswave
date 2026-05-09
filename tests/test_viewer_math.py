@@ -329,10 +329,9 @@ def test_reset_view_only_affects_active_plot_tab(tmp_path: Path) -> None:
 
     assert window.waveform_plot.view_box.viewRange()[0] == pytest.approx([1.0, 2.0])
     assert window.spectrum_plot.view_box.viewRange()[0][0] >= 0.0
-    assert window.spectrum_plot.view_box.viewRange()[1][0] >= 0.0
 
 
-def test_spectrum_plot_clamps_negative_ranges(tmp_path: Path) -> None:
+def test_spectrum_plot_clamps_frequency_but_allows_negative_db(tmp_path: Path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app
     window = MainWindow()
@@ -347,7 +346,26 @@ def test_spectrum_plot_clamps_negative_ranges(tmp_path: Path) -> None:
     window.spectrum_plot.view_box.clamp_to_non_negative()
 
     assert window.spectrum_plot.view_box.viewRange()[0][0] == pytest.approx(0.0)
-    assert window.spectrum_plot.view_box.viewRange()[1][0] == pytest.approx(0.0)
+    assert window.spectrum_plot.view_box.viewRange()[1][0] == pytest.approx(-1.0)
+
+
+def test_spectrum_plot_clamps_x_range_to_frequency_clip(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    _select_combo_data(window.math_function, "fft")
+    window.math_operand_a.setCurrentText("voltage")
+    window.math_result_name.setText("fft-voltage")
+    window._add_math_output()
+    window.frequency_min.setText("0.125")
+    window.frequency_max.setText("0.25")
+    window._apply_frequency_range()
+
+    window.spectrum_plot.view_box.setXRange(-1.0, 10.0, padding=0.0)
+    window.spectrum_plot.view_box.clamp_x_to_bounds()
+
+    assert window.spectrum_plot.view_box.viewRange()[0] == pytest.approx([0.125, 0.25])
 
 
 def test_spectrum_peak_detection_for_hover_readout(tmp_path: Path) -> None:
@@ -363,6 +381,7 @@ def test_spectrum_peak_detection_for_hover_readout(tmp_path: Path) -> None:
     peak_index = int(np.argmax(window.spectrum_plot._display_magnitude))
 
     assert window.spectrum_plot._is_peak_index(peak_index) is True
+    assert np.all(np.isfinite(window.spectrum_plot._display_magnitude))
 
 
 def test_load_file_asks_for_excel_sheet_when_multiple_sheets(tmp_path: Path, monkeypatch) -> None:

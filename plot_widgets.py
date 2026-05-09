@@ -1206,7 +1206,7 @@ class SpectrumPlot(QtWidgets.QWidget):
         self.plot.setBackground(PLOT_BACKGROUND_COLOR)
         self.plot.showGrid(x=True, y=True, alpha=0.25)
         self.plot.setLabel("bottom", "Frequency", units="Hz")
-        self.plot.setLabel("left", "Magnitude")
+        self.plot.setLabel("left", "Magnitude", units="dB")
         self.plot.setMouseEnabled(x=True, y=True)
         self.curve = pg.PlotDataItem(pen=pg.mkPen("#ffd400", width=CURVE_WIDTH))
         self.plot.addItem(self.curve)
@@ -1250,20 +1250,23 @@ class SpectrumPlot(QtWidgets.QWidget):
             return
         frequency_range = self.frequency_range or self.spectrum.frequency_range
         frequency, magnitude = filtered_spectrum(self.spectrum, frequency_range)
+        magnitude_db = _magnitude_to_db(magnitude)
         self._display_frequency = frequency
-        self._display_magnitude = magnitude
-        self.curve.setData(frequency, magnitude)
+        self._display_magnitude = magnitude_db
+        self.curve.setData(frequency, magnitude_db)
         self.curve.setPen(pg.mkPen(self.spectrum.color, width=CURVE_WIDTH))
-        self.view_box.setLimits(xMin=0.0, yMin=0.0)
-        if frequency.size >= 2 and reset_view:
-            self.plot.setXRange(max(0.0, float(frequency[0])), max(0.0, float(frequency[-1])), padding=0.02)
-        finite_magnitude = magnitude[np.isfinite(magnitude)]
+        x_low, x_high = _normalized_frequency_bounds(frequency_range)
+        self.view_box.set_x_bounds(x_low, x_high)
+        if x_high > x_low and reset_view:
+            self.plot.setXRange(x_low, x_high, padding=0.0)
+        finite_magnitude = magnitude_db[np.isfinite(magnitude_db)]
         if finite_magnitude.size and reset_view:
             y_max = float(np.nanmax(finite_magnitude))
-            if y_max <= 0:
-                y_max = 1.0
-            self.plot.setYRange(0.0, y_max, padding=0.05)
-        self.view_box.clamp_to_non_negative()
+            y_min = float(np.nanmin(finite_magnitude))
+            if y_min == y_max:
+                y_max = y_min + 1.0
+            self.plot.setYRange(y_min, y_max, padding=0.08)
+        self.view_box.clamp_x_to_bounds()
 
     def _on_mouse_moved(self, event: object) -> None:
         if self._display_frequency.size == 0 or self._display_magnitude.size == 0:
@@ -1289,7 +1292,7 @@ class SpectrumPlot(QtWidgets.QWidget):
         if abs(point.x() - frequency) > tolerance_x or abs(point.y() - magnitude) > tolerance_y:
             self.hover_label.hide()
             return
-        self.hover_label.setText(f"f={frequency:.8g} Hz\nE={magnitude * magnitude:.8g}")
+        self.hover_label.setText(f"f={frequency:.8g} Hz\nMag={magnitude:.8g} dB")
         self.hover_label.setPos(frequency, magnitude)
         self.hover_label.show()
 
@@ -1301,7 +1304,23 @@ class SpectrumPlot(QtWidgets.QWidget):
 
 
 class SpectrumViewBox(pg.ViewBox):
-    """Spectrum navigation mirrors waveform X/Y gestures, bounded at zero."""
+    """Spectrum navigation mirrors waveform X/Y gestures, with frequency bounded at zero."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._x_bounds: tuple[float, float | None] = (0.0, None)
+
+    def set_x_bounds(self, low: float, high: float | None) -> None:
+        low = max(0.0, float(low)) if np.isfinite(low) else 0.0
+        high = float(high) if high is not None and np.isfinite(high) else None
+        if high is not None and high < low:
+            high = low
+        self._x_bounds = (low, high)
+        if high is None:
+            self.setLimits(xMin=low)
+        else:
+            self.setLimits(xMin=low, xMax=high)
+        self.clamp_x_to_bounds()
 
     def wheelEvent(self, ev: QtGui.QWheelEvent, axis: int | None = None) -> None:  # noqa: N802 - Qt override name.
         zoom_axis = _wheel_axis_from_event(ev, axis)
@@ -1320,7 +1339,7 @@ class SpectrumViewBox(pg.ViewBox):
             self.scaleBy(y=factor, center=center)
         else:
             self.scaleBy(x=factor, center=center)
-        self.clamp_to_non_negative()
+        self.clamp_x_to_bounds()
         ev.accept()
 
     def mouseDragEvent(self, ev: object, axis: int | None = None) -> None:  # noqa: N802 - Qt override name.
@@ -1332,13 +1351,41 @@ class SpectrumViewBox(pg.ViewBox):
             self.translateBy(y=delta.y())
         else:
             self.translateBy(x=delta.x())
-        self.clamp_to_non_negative()
+        self.clamp_x_to_bounds()
 
     def clamp_to_non_negative(self) -> None:
-        x_range, y_range = self.viewRange()
+        self.clamp_x_to_bounds()
+
+    def clamp_x_to_non_negative(self) -> None:
+        self.clamp_x_to_bounds()
+
+    def clamp_x_to_bounds(self) -> None:
+        x_range, _y_range = self.viewRange()
         x_low, x_high = x_range
-        y_low, y_high = y_range
-        if x_low < 0.0:
-            self.setXRange(0.0, max(0.0, x_high - x_low), padding=0.0)
-        if y_low < 0.0:
-            self.setYRange(0.0, max(0.0, y_high - y_low), padding=0.0)
+        bound_low, bound_high = self._x_bounds
+        if bound_high is None:
+            if x_low < bound_low:
+                self.setXRange(bound_low, bound_low + max(0.0, x_high - x_low), padding=0.0)
+            return
+        width = max(0.0, x_high - x_low)
+        bounds_width = max(0.0, bound_high - bound_low)
+        if width >= bounds_width:
+            self.setXRange(bound_low, bound_high, padding=0.0)
+        elif x_low < bound_low:
+            self.setXRange(bound_low, bound_low + width, padding=0.0)
+        elif x_high > bound_high:
+            self.setXRange(bound_high - width, bound_high, padding=0.0)
+
+
+def _magnitude_to_db(magnitude: np.ndarray) -> np.ndarray:
+    values = np.asarray(magnitude, dtype=float)
+    floor = np.finfo(float).tiny
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return 20.0 * np.log10(np.maximum(values, floor))
+
+
+def _normalized_frequency_bounds(frequency_range: tuple[float, float]) -> tuple[float, float]:
+    low, high = sorted((float(frequency_range[0]), float(frequency_range[1])))
+    low = max(0.0, low) if np.isfinite(low) else 0.0
+    high = max(low, high) if np.isfinite(high) else low
+    return low, high
