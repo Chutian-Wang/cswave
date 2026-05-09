@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
+import io
 from pathlib import Path
 from typing import Iterable
 
@@ -38,6 +40,8 @@ class ChannelData:
     values: np.ndarray
     color: str
     unit: str | None = None
+    source_expression: str | None = None
+    is_calculated: bool = False
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,7 @@ class WaveformData:
     ignored_columns: list[str]
     source_path: Path
     time_column: str | None = None
+    sheet_name: str | None = None
 
 
 def load_csv_waveform(
@@ -58,6 +63,57 @@ def load_csv_waveform(
     """Load a CSV file and infer the time column plus displayable channels."""
     source_path = Path(path)
     frame = pd.read_csv(source_path, encoding="utf-8-sig")
+    return _waveform_from_frame(
+        frame,
+        source_path=source_path,
+        sheet_name=None,
+        finite_ratio_threshold=finite_ratio_threshold,
+        min_finite_samples=min_finite_samples,
+    )
+
+
+def load_waveform(
+    path: str | Path,
+    *,
+    sheet_name: str | int | None = None,
+    finite_ratio_threshold: float = 0.5,
+    min_finite_samples: int = 2,
+) -> WaveformData:
+    """Load CSV or Excel waveform data and infer the time column plus displayable channels."""
+    source_path = Path(path)
+    if source_path.suffix.lower() in {".xls", ".xlsx", ".xlsm"}:
+        names = _excel_sheet_names(source_path)
+        requested_sheet = sheet_name if sheet_name is not None else 0
+        frame = _read_excel_quiet(source_path, requested_sheet)
+        actual_sheet = names[sheet_name] if isinstance(sheet_name, int) and sheet_name < len(names) else sheet_name
+        if actual_sheet is None:
+            actual_sheet = names[0] if names else None
+        return _waveform_from_frame(
+            frame,
+            source_path=source_path,
+            sheet_name=str(actual_sheet) if actual_sheet is not None else None,
+            finite_ratio_threshold=finite_ratio_threshold,
+            min_finite_samples=min_finite_samples,
+        )
+    return load_csv_waveform(
+        source_path,
+        finite_ratio_threshold=finite_ratio_threshold,
+        min_finite_samples=min_finite_samples,
+    )
+
+
+def excel_sheet_names(path: str | Path) -> list[str]:
+    return _excel_sheet_names(Path(path))
+
+
+def _waveform_from_frame(
+    frame: pd.DataFrame,
+    *,
+    source_path: Path,
+    sheet_name: str | None,
+    finite_ratio_threshold: float,
+    min_finite_samples: int,
+) -> WaveformData:
     frame = frame.rename(columns={column: _clean_header(column) for column in frame.columns})
 
     numeric_columns = {
@@ -103,7 +159,18 @@ def load_csv_waveform(
         ignored_columns=ignored_columns,
         source_path=source_path,
         time_column=time_column,
+        sheet_name=sheet_name,
     )
+
+
+def _excel_sheet_names(path: Path) -> list[str]:
+    with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+        return list(pd.ExcelFile(path).sheet_names)
+
+
+def _read_excel_quiet(path: Path, sheet_name: str | int) -> pd.DataFrame:
+    with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+        return pd.read_excel(path, sheet_name=sheet_name)
 
 
 def _clean_header(column: object) -> str:

@@ -204,6 +204,17 @@ def test_preview_right_axis_mouse_zoom_is_disabled() -> None:
     assert plot.preview_right_view_box.state["mouseEnabled"] == [False, False]
 
 
+def test_waveform_viewbox_accepts_axis_wheel_argument() -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    plot = WaveformPlot()
+    event = _FakeWheelEvent(QtCore.QPointF(0.0, 0.0), 120)
+
+    plot.view_box.wheelEvent(event, axis=1)
+
+    assert event.accepted is True
+
+
 def test_preview_wheel_zoom_preserves_region_visual_fraction(tmp_path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app

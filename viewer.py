@@ -4,9 +4,19 @@ from pathlib import Path
 
 import numpy as np
 
-from csv_loader import ChannelData, WaveformData, load_csv_waveform
+from csv_loader import ChannelData, OSCILLOSCOPE_COLORS, WaveformData, excel_sheet_names, load_waveform
+from math_engine import (
+    MATH_FUNCTIONS,
+    MATH_FUNCTION_BY_ID,
+    WINDOW_FUNCTIONS,
+    ZERO_PAD_OPTIONS,
+    SpectrumData,
+    create_calculated_channel,
+    create_fft_spectrum,
+    default_result_name,
+)
 from PySide6 import QtCore, QtGui, QtWidgets
-from plot_widgets import AxisGroupSettings, WaveformPlot
+from plot_widgets import AxisGroupSettings, SpectrumPlot, WaveformPlot
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -15,10 +25,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("CSV Waveform Viewer")
         self.resize(1280, 820)
         self.data: WaveformData | None = None
+        self.source_data: WaveformData | None = None
+        self.calculated_channels: list[ChannelData] = []
+        self.spectra: dict[str, SpectrumData] = {}
         self.channel_checks: dict[str, QtWidgets.QCheckBox] = {}
         self.last_cursor_channel_by_group: dict[str, str] = {}
 
         self.waveform_plot = WaveformPlot()
+        self.spectrum_plot = SpectrumPlot()
         self.waveform_plot.cursorChanged.connect(self._update_cursor_panel)
         self.waveform_plot.activeAxisGroupChanged.connect(self._sync_axis_group_selector)
 
@@ -44,34 +58,52 @@ class MainWindow(QtWidgets.QMainWindow):
             for key in ("X1", "X2", "dX", "Y1", "Y2", "dY", "Active Y1", "Active Y2", "Active dY")
         }
         cursor_panel = self._build_cursor_panel()
+        math_panel = self._build_math_panel()
 
         side_tabs = QtWidgets.QTabWidget()
         side_tabs.addTab(self._scroll_area(self.channel_panel), "Channels")
         side_tabs.addTab(cursor_panel, "Cursors")
+        side_tabs.addTab(math_panel, "Math")
         side_tabs.setMinimumWidth(260)
 
+        self.plot_tabs = QtWidgets.QTabWidget()
+        self.plot_tabs.addTab(self.waveform_plot, "Waveforms")
+        self.plot_tabs.addTab(self.spectrum_plot, "Spectrum")
+
         splitter = QtWidgets.QSplitter()
-        splitter.addWidget(self.waveform_plot)
+        splitter.addWidget(self.plot_tabs)
         splitter.addWidget(side_tabs)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 0)
         self.setCentralWidget(splitter)
 
-        self.statusBar().showMessage("Load a CSV file to begin")
+        self.statusBar().showMessage("Load a waveform file to begin")
         self._build_actions()
         self._build_shortcuts()
 
-    def load_file(self, path: str | Path) -> None:
-        data = load_csv_waveform(path)
+    def load_file(self, path: str | Path, *, sheet_name: str | None = None) -> None:
+        selected_sheet = sheet_name
+        if selected_sheet is None and Path(path).suffix.lower() in {".xls", ".xlsx", ".xlsm"}:
+            selected_sheet = self._select_excel_sheet(path)
+            if selected_sheet is None:
+                return
+        data = load_waveform(path, sheet_name=selected_sheet)
+        self.source_data = data
+        self.calculated_channels.clear()
+        self.spectra.clear()
         self.data = data
+        self.spectrum_plot.clear()
         self.waveform_plot.set_data(data)
         self._rebuild_channels(data.channels)
         self._rebuild_active_channel(data.channels)
+        self._sync_math_controls()
+        self._sync_math_outputs()
         self._sync_cursor_axis_selector()
         ignored = f" Ignored {len(data.ignored_columns)} column(s)." if data.ignored_columns else ""
         time_source = data.time_column or "sample index"
+        sheet = f", sheet: {data.sheet_name}" if data.sheet_name else ""
         self.statusBar().showMessage(
-            f"Loaded {data.source_path.name}: {len(data.channels)} channel(s), time base: {time_source}.{ignored}"
+            f"Loaded {data.source_path.name}{sheet}: {len(data.channels)} channel(s), time base: {time_source}.{ignored}"
         )
         self._update_cursor_panel()
 
@@ -83,7 +115,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         toolbar.addWidget(_toolbar_section_label("File"))
 
-        open_action = QtGui.QAction("Open CSV", self)
+        open_action = QtGui.QAction("Open Waveform", self)
         open_action.setShortcut(QtGui.QKeySequence.Open)
         open_action.triggered.connect(self._open_dialog)
         toolbar.addAction(open_action)
@@ -92,7 +124,7 @@ class MainWindow(QtWidgets.QMainWindow):
         toolbar.addWidget(_toolbar_section_label("View"))
 
         reset_action = QtGui.QAction("Reset View", self)
-        reset_action.triggered.connect(self.waveform_plot.reset_view)
+        reset_action.triggered.connect(self._reset_active_view)
         toolbar.addAction(reset_action)
 
         axis_setup_action = QtGui.QAction("Axis Groups...", self)
@@ -144,19 +176,41 @@ class MainWindow(QtWidgets.QMainWindow):
     def _open_dialog(self) -> None:
         path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
             self,
-            "Open CSV",
+            "Open Waveform",
             str(Path.cwd()),
-            "CSV files (*.csv);;All files (*)",
+            "Waveform files (*.csv *.xls *.xlsx *.xlsm);;CSV files (*.csv);;Excel files (*.xls *.xlsx *.xlsm);;All files (*)",
         )
         if not path:
             return
         try:
             self.load_file(path)
         except Exception as exc:  # noqa: BLE001 - GUI needs user-facing failure.
-            QtWidgets.QMessageBox.critical(self, "Could not load CSV", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Could not load waveform", str(exc))
+
+    def _select_excel_sheet(self, path: str | Path) -> str | None:
+        sheets = excel_sheet_names(path)
+        if not sheets:
+            return None
+        if len(sheets) == 1:
+            return sheets[0]
+        sheet, accepted = QtWidgets.QInputDialog.getItem(
+            self,
+            "Select Waveform Sheet",
+            "Waveform sheet",
+            sheets,
+            0,
+            False,
+        )
+        return sheet if accepted and sheet else None
 
     def _selected_zoom_axis(self) -> str:
         return self.zoom_axis_selector.currentText().lower()
+
+    def _reset_active_view(self) -> None:
+        if self.plot_tabs.currentWidget() is self.spectrum_plot:
+            self.spectrum_plot.reset_view()
+            return
+        self.waveform_plot.reset_view()
 
     def _sync_axis_group_selector(self, *_args: object) -> None:
         current_index = self.axis_group_selector.findData(self.waveform_plot.active_y_group)
@@ -205,7 +259,7 @@ class MainWindow(QtWidgets.QMainWindow):
         toggle_axis = QtGui.QShortcut(QtGui.QKeySequence("T"), self)
         toggle_axis.activated.connect(self._toggle_axis_group)
         reset_view = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+R"), self)
-        reset_view.activated.connect(self.waveform_plot.reset_view)
+        reset_view.activated.connect(self._reset_active_view)
         reset_cursors = QtGui.QShortcut(QtGui.QKeySequence("Shift+R"), self)
         reset_cursors.activated.connect(self._reset_cursors)
         toggle_x_cursors = QtGui.QShortcut(QtGui.QKeySequence("X"), self)
@@ -287,6 +341,93 @@ class MainWindow(QtWidgets.QMainWindow):
         grid.setColumnStretch(1, 1)
         return box
 
+    def _build_math_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        builder = QtWidgets.QGroupBox("Builder")
+        form = QtWidgets.QFormLayout(builder)
+        form.setContentsMargins(8, 8, 8, 8)
+
+        self.math_function = QtWidgets.QComboBox()
+        for function in MATH_FUNCTIONS:
+            self.math_function.addItem(function.label, function.id)
+        self.math_function.currentIndexChanged.connect(self._math_function_changed)
+        form.addRow("Function", self.math_function)
+
+        self.math_operand_a = QtWidgets.QComboBox()
+        self.math_operand_a.currentIndexChanged.connect(self._math_operand_changed)
+        form.addRow("A", self.math_operand_a)
+
+        self.math_operand_b = QtWidgets.QComboBox()
+        self.math_operand_b.currentIndexChanged.connect(self._math_operand_changed)
+        self.math_operand_b_label = QtWidgets.QLabel("B")
+        form.addRow(self.math_operand_b_label, self.math_operand_b)
+
+        self.fft_window = QtWidgets.QComboBox()
+        for window in WINDOW_FUNCTIONS:
+            self.fft_window.addItem(window.label, window.id)
+        self.fft_window_label = QtWidgets.QLabel("Window")
+        form.addRow(self.fft_window_label, self.fft_window)
+
+        self.fft_remove_dc = QtWidgets.QCheckBox("Remove DC offset")
+        form.addRow(self.fft_remove_dc)
+
+        self.fft_zero_pad = QtWidgets.QComboBox()
+        for option_id, label in ZERO_PAD_OPTIONS:
+            self.fft_zero_pad.addItem(label, option_id)
+        self.fft_zero_pad.setToolTip(
+            "Adds zeros after the selected waveform segment to create denser FFT bins. "
+            "Does not improve true frequency resolution."
+        )
+        self.fft_zero_pad_label = QtWidgets.QLabel("Zero pad")
+        form.addRow(self.fft_zero_pad_label, self.fft_zero_pad)
+
+        self.math_result_name = QtWidgets.QLineEdit()
+        form.addRow("Name", self.math_result_name)
+
+        buttons = QtWidgets.QWidget()
+        buttons_layout = QtWidgets.QHBoxLayout(buttons)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        add_button = QtWidgets.QPushButton("Add")
+        add_button.clicked.connect(self._add_math_output)
+        self.update_fft_button = QtWidgets.QPushButton("Update FFT")
+        self.update_fft_button.clicked.connect(self._update_fft_spectrum)
+        buttons_layout.addWidget(add_button)
+        buttons_layout.addWidget(self.update_fft_button)
+        form.addRow(buttons)
+        layout.addWidget(builder)
+
+        spectrum = QtWidgets.QGroupBox("Spectrum Range")
+        spectrum_form = QtWidgets.QFormLayout(spectrum)
+        spectrum_form.setContentsMargins(8, 8, 8, 8)
+        self.frequency_min = QtWidgets.QLineEdit()
+        self.frequency_max = QtWidgets.QLineEdit()
+        apply_frequency = QtWidgets.QPushButton("Apply Frequency Range")
+        apply_frequency.clicked.connect(self._apply_frequency_range)
+        spectrum_form.addRow("Min Hz", self.frequency_min)
+        spectrum_form.addRow("Max Hz", self.frequency_max)
+        spectrum_form.addRow(apply_frequency)
+        layout.addWidget(spectrum)
+
+        outputs = QtWidgets.QGroupBox("Outputs")
+        outputs_layout = QtWidgets.QVBoxLayout(outputs)
+        outputs_layout.setContentsMargins(8, 8, 8, 8)
+        self.math_outputs = QtWidgets.QListWidget()
+        self.math_outputs.currentTextChanged.connect(self._math_output_selected)
+        self.math_outputs.itemClicked.connect(lambda item: self._math_output_selected(item.text()))
+        remove_button = QtWidgets.QPushButton("Remove")
+        remove_button.clicked.connect(self._remove_math_output)
+        outputs_layout.addWidget(self.math_outputs)
+        outputs_layout.addWidget(remove_button)
+        layout.addWidget(outputs)
+        layout.addStretch()
+
+        self._math_function_changed()
+        return panel
+
     def _rebuild_channels(self, channels: list[ChannelData]) -> None:
         while self.channel_layout.count() > 2:
             item = self.channel_layout.takeAt(1)
@@ -298,7 +439,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for channel in channels:
             checkbox = QtWidgets.QCheckBox(channel.name)
             checkbox.setChecked(channel.name in self.waveform_plot.selected_channels)
-            checkbox.setEnabled(self.waveform_plot.axis_settings[channel.name].group != "disabled")
+            checkbox.setEnabled(self.waveform_plot.axis_settings.get(channel.name, AxisGroupSettings("disabled", "")).group != "disabled")
             checkbox.setToolTip(self._channel_checkbox_tooltip(channel.name))
             checkbox.toggled.connect(self._channel_selection_changed)
             checkbox.setStyleSheet(f"QCheckBox {{ color: {channel.color}; }}")
@@ -410,6 +551,272 @@ class MainWindow(QtWidgets.QMainWindow):
         }
         for key, value in mapping.items():
             self.cursor_labels[key].setText(_format_value(value))
+
+    def _sync_math_controls(self) -> None:
+        current_a = self.math_operand_a.currentText() if hasattr(self, "math_operand_a") else ""
+        current_b = self.math_operand_b.currentText() if hasattr(self, "math_operand_b") else ""
+        names = [channel.name for channel in self.data.channels] if self.data is not None else []
+        for combo, current in ((self.math_operand_a, current_a), (self.math_operand_b, current_b)):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(names)
+            if current in names:
+                combo.setCurrentText(current)
+            combo.blockSignals(False)
+        self._math_function_changed()
+
+    def _sync_math_outputs(self) -> None:
+        if not hasattr(self, "math_outputs"):
+            return
+        current = self.math_outputs.currentItem().text() if self.math_outputs.currentItem() is not None else ""
+        self.math_outputs.blockSignals(True)
+        self.math_outputs.clear()
+        for channel in self.calculated_channels:
+            self.math_outputs.addItem(channel.name)
+        for name in self.spectra:
+            self.math_outputs.addItem(name)
+        matching = self.math_outputs.findItems(current, QtCore.Qt.MatchFlag.MatchExactly)
+        if matching:
+            self.math_outputs.setCurrentItem(matching[0])
+        self.math_outputs.blockSignals(False)
+
+    def _math_function_changed(self) -> None:
+        function_id = self.math_function.currentData() if hasattr(self, "math_function") else None
+        function = MATH_FUNCTION_BY_ID.get(function_id)
+        is_binary = function is not None and function.arity == 2
+        is_fft = function is not None and function.domain == "frequency"
+        self.math_operand_b.setEnabled(is_binary)
+        self.math_operand_b.setVisible(is_binary)
+        self.math_operand_b_label.setVisible(is_binary)
+        self.fft_window.setEnabled(is_fft)
+        self.fft_window.setVisible(is_fft)
+        self.fft_window_label.setVisible(is_fft)
+        self.fft_remove_dc.setVisible(is_fft)
+        self.fft_zero_pad.setVisible(is_fft)
+        self.fft_zero_pad_label.setVisible(is_fft)
+        self.update_fft_button.setVisible(is_fft)
+        self._math_operand_changed()
+
+    def _math_operand_changed(self) -> None:
+        if not hasattr(self, "math_result_name"):
+            return
+        function_id = self.math_function.currentData()
+        if function_id not in MATH_FUNCTION_BY_ID:
+            return
+        operand_a = self.math_operand_a.currentText()
+        operand_b = self.math_operand_b.currentText() if MATH_FUNCTION_BY_ID[function_id].arity == 2 else None
+        if operand_a:
+            self.math_result_name.setText(default_result_name(function_id, operand_a, operand_b))
+
+    def _add_math_output(self) -> None:
+        if self.data is None:
+            QtWidgets.QMessageBox.information(self, "Math", "Load a CSV file before creating calculated traces.")
+            return
+        function_id = self.math_function.currentData()
+        function = MATH_FUNCTION_BY_ID.get(function_id)
+        if function is None:
+            return
+        try:
+            if function.domain == "frequency":
+                self._add_fft_spectrum()
+            else:
+                self._add_calculated_trace()
+        except Exception as exc:  # noqa: BLE001 - user-facing calculation failure.
+            QtWidgets.QMessageBox.warning(self, "Math failed", str(exc))
+
+    def _add_calculated_trace(self) -> None:
+        if self.data is None:
+            return
+        name = self.math_result_name.text().strip()
+        if not name:
+            raise ValueError("Calculated trace name cannot be empty")
+        if name in {channel.name for channel in self.data.channels}:
+            raise ValueError(f"A trace named {name!r} already exists")
+        function_id = self.math_function.currentData()
+        operand_a = self._channel_by_name(self.math_operand_a.currentText())
+        operand_b = self._channel_by_name(self.math_operand_b.currentText()) if MATH_FUNCTION_BY_ID[function_id].arity == 2 else None
+        if operand_a is None:
+            raise ValueError("Select operand A")
+        channel = create_calculated_channel(
+            function_id=function_id,
+            operand_a=operand_a,
+            operand_b=operand_b,
+            name=name,
+            color=self._next_calculated_color(),
+        )
+        self.calculated_channels.append(channel)
+        self._replace_active_data(select={channel.name})
+        self._sync_math_outputs()
+        self.statusBar().showMessage(f"Added calculated trace: {channel.name}")
+
+    def _add_fft_spectrum(self) -> None:
+        if self.data is None:
+            return
+        name = self.math_result_name.text().strip()
+        if not name:
+            raise ValueError("Spectrum name cannot be empty")
+        operand_a = self._channel_by_name(self.math_operand_a.currentText())
+        if operand_a is None:
+            raise ValueError("Select operand A")
+        spectrum = create_fft_spectrum(
+            channel=operand_a,
+            time=self.data.time,
+            name=name,
+            time_range=self.waveform_plot.x_cursor_range(),
+            window_id=self.fft_window.currentData(),
+            remove_dc=self.fft_remove_dc.isChecked(),
+            zero_pad=self.fft_zero_pad.currentData(),
+        )
+        self.spectra[name] = spectrum
+        self.spectrum_plot.set_spectrum(spectrum)
+        self._set_frequency_inputs(spectrum.frequency_range)
+        self._sync_math_outputs()
+        matching = self.math_outputs.findItems(name, QtCore.Qt.MatchFlag.MatchExactly)
+        if matching:
+            self.math_outputs.setCurrentItem(matching[0])
+        self.statusBar().showMessage(
+            f"Updated spectrum: {name}, {spectrum.window_id} window, {spectrum.time_range[0]:.8g} to {spectrum.time_range[1]:.8g}"
+        )
+
+    def _update_fft_spectrum(self) -> None:
+        if self.data is None:
+            return
+        selected = self._selected_spectrum()
+        if selected is None:
+            self._add_math_output()
+            return
+        source_channel = self._channel_by_name(selected.source_channel)
+        if source_channel is None:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Math failed",
+                f"Source trace {selected.source_channel!r} is no longer available.",
+            )
+            return
+        try:
+            spectrum = create_fft_spectrum(
+                channel=source_channel,
+                time=self.data.time,
+                name=selected.name,
+                time_range=self.waveform_plot.x_cursor_range(),
+                window_id=self.fft_window.currentData(),
+                remove_dc=self.fft_remove_dc.isChecked(),
+                zero_pad=self.fft_zero_pad.currentData(),
+            )
+        except Exception as exc:  # noqa: BLE001 - user-facing calculation failure.
+            QtWidgets.QMessageBox.warning(self, "Math failed", str(exc))
+            return
+        self.spectra[selected.name] = spectrum
+        self.spectrum_plot.set_spectrum(spectrum)
+        self._set_frequency_inputs(spectrum.frequency_range)
+        self.statusBar().showMessage(
+            f"Updated spectrum: {spectrum.name}, {spectrum.window_id} window, {spectrum.time_range[0]:.8g} to {spectrum.time_range[1]:.8g}"
+        )
+
+    def _remove_math_output(self) -> None:
+        item = self.math_outputs.currentItem()
+        if item is None:
+            return
+        name = item.text()
+        original_channel_count = len(self.calculated_channels)
+        self.calculated_channels = [channel for channel in self.calculated_channels if channel.name != name]
+        removed_spectrum = self.spectra.pop(name, None)
+        if len(self.calculated_channels) != original_channel_count:
+            self._replace_active_data(select=set())
+            self.statusBar().showMessage(f"Removed calculated trace: {name}")
+        if removed_spectrum is not None:
+            self.spectrum_plot.clear()
+            self.frequency_min.clear()
+            self.frequency_max.clear()
+            self.statusBar().showMessage(f"Removed spectrum: {name}")
+        self._sync_math_outputs()
+
+    def _apply_frequency_range(self) -> None:
+        spectrum = self._selected_spectrum()
+        if spectrum is None:
+            return
+        low = _parse_float_text(self.frequency_min.text())
+        high = _parse_float_text(self.frequency_max.text())
+        if low is None or high is None:
+            QtWidgets.QMessageBox.warning(self, "Spectrum Range", "Enter numeric frequency bounds.")
+            return
+        self.spectrum_plot.set_frequency_range((low, high))
+        self.spectra[spectrum.name] = SpectrumData(
+            name=spectrum.name,
+            frequency=spectrum.frequency,
+            magnitude=spectrum.magnitude,
+            source_channel=spectrum.source_channel,
+            color=spectrum.color,
+            time_range=spectrum.time_range,
+            frequency_range=tuple(sorted((low, high))),
+            window_id=spectrum.window_id,
+            remove_dc=spectrum.remove_dc,
+            zero_pad=spectrum.zero_pad,
+            sample_count=spectrum.sample_count,
+            fft_count=spectrum.fft_count,
+        )
+
+    def _math_output_selected(self, name: str) -> None:
+        spectrum = self.spectra.get(name)
+        if spectrum is not None:
+            self.plot_tabs.setCurrentWidget(self.spectrum_plot)
+            self.spectrum_plot.set_spectrum(spectrum)
+            self._set_frequency_inputs(spectrum.frequency_range)
+            function_index = self.math_function.findData("fft")
+            if function_index >= 0:
+                self.math_function.setCurrentIndex(function_index)
+            self.math_operand_a.setCurrentText(spectrum.source_channel)
+            self.fft_remove_dc.setChecked(spectrum.remove_dc)
+            window_index = self.fft_window.findData(spectrum.window_id)
+            if window_index >= 0:
+                self.fft_window.setCurrentIndex(window_index)
+            zero_pad_index = self.fft_zero_pad.findData(spectrum.zero_pad)
+            if zero_pad_index >= 0:
+                self.fft_zero_pad.setCurrentIndex(zero_pad_index)
+            self.math_result_name.setText(spectrum.name)
+            return
+        if any(channel.name == name for channel in self.calculated_channels):
+            self.plot_tabs.setCurrentWidget(self.waveform_plot)
+            self.waveform_plot.focus_channel(name)
+            self._sync_channel_checks()
+
+    def _selected_spectrum(self) -> SpectrumData | None:
+        item = self.math_outputs.currentItem()
+        if item is None:
+            return None
+        return self.spectra.get(item.text())
+
+    def _set_frequency_inputs(self, frequency_range: tuple[float, float]) -> None:
+        self.frequency_min.setText(_format_value(frequency_range[0]))
+        self.frequency_max.setText(_format_value(frequency_range[1]))
+
+    def _replace_active_data(self, *, select: set[str]) -> None:
+        if self.source_data is None:
+            return
+        self.data = WaveformData(
+            time=self.source_data.time,
+            channels=[*self.source_data.channels, *self.calculated_channels],
+            ignored_columns=self.source_data.ignored_columns,
+            source_path=self.source_data.source_path,
+            time_column=self.source_data.time_column,
+        )
+        self.waveform_plot.replace_data_preserving_view(self.data, select=select)
+        self._rebuild_channels(self.data.channels)
+        self._rebuild_active_channel(self.data.channels)
+        self._sync_math_controls()
+        self._update_cursor_panel()
+
+    def _channel_by_name(self, name: str) -> ChannelData | None:
+        if self.data is None:
+            return None
+        for channel in self.data.channels:
+            if channel.name == name:
+                return channel
+        return None
+
+    def _next_calculated_color(self) -> str:
+        index = len(self.source_data.channels if self.source_data is not None else []) + len(self.calculated_channels)
+        return OSCILLOSCOPE_COLORS[index % len(OSCILLOSCOPE_COLORS)]
 
     @staticmethod
     def _scroll_area(widget: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
@@ -543,6 +950,11 @@ def _parse_float_item(item: QtWidgets.QTableWidgetItem | None) -> float | None:
     if item is None:
         return None
     text = item.text().strip()
+    return _parse_float_text(text)
+
+
+def _parse_float_text(text: str) -> float | None:
+    text = text.strip()
     if not text:
         return None
     try:

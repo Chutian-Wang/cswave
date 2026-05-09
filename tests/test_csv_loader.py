@@ -6,7 +6,9 @@ import sys
 
 import numpy as np
 
-from csv_loader import load_csv_waveform
+import pandas as pd
+
+from csv_loader import excel_sheet_names, load_csv_waveform, load_waveform
 
 
 def write_csv(path: Path, content: str) -> Path:
@@ -84,3 +86,28 @@ def test_main_imports_with_windows_python_312_import_order() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "ok" in result.stdout
+
+
+def test_loads_excel_waveform_sheet(tmp_path: Path) -> None:
+    xlsx_path = tmp_path / "wave.xlsx"
+    with pd.ExcelWriter(xlsx_path) as writer:
+        pd.DataFrame({"time": [0.0, 1.0], "A": [1.0, 2.0]}).to_excel(writer, sheet_name="Wave", index=False)
+        pd.DataFrame({"note": ["not wave"]}).to_excel(writer, sheet_name="Notes", index=False)
+
+    data = load_waveform(xlsx_path, sheet_name="Wave")
+
+    assert excel_sheet_names(xlsx_path) == ["Wave", "Notes"]
+    assert data.sheet_name == "Wave"
+    assert data.time_column == "time"
+    assert [channel.name for channel in data.channels] == ["A"]
+
+
+def test_loads_example_xls_waveform(capsys) -> None:
+    data = load_waveform("example_csv/Rectangular_gate_4.xls", sheet_name="Run203")
+
+    assert data.sheet_name == "Run203"
+    assert data.time_column == "TimeOutput"
+    assert {"VMeasCh1", "IMeasCh1"}.issubset({channel.name for channel in data.channels})
+    captured = capsys.readouterr()
+    assert "OLE2 inconsistency" not in captured.out
+    assert "OLE2 inconsistency" not in captured.err

@@ -8,6 +8,7 @@ import sys
 import numpy as np
 
 from csv_loader import ChannelData, WaveformData
+from math_engine import SpectrumData, filtered_spectrum
 
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -65,13 +66,13 @@ class WaveformViewBox(pg.ViewBox):
         self.x_target_getter = x_target_getter
         self.free_pan_getter = free_pan_getter
 
-    def wheelEvent(self, ev: QtGui.QWheelEvent) -> None:  # noqa: N802 - Qt override name.
-        axis = "y" if _has_control_modifier(ev) else "x"
+    def wheelEvent(self, ev: QtGui.QWheelEvent, axis: int | None = None) -> None:  # noqa: N802 - Qt override name.
+        zoom_axis = _wheel_axis_from_event(ev, axis)
         delta = _wheel_delta(ev)
         if delta == 0:
             ev.ignore()
             return
-        self.zoom_axis(axis, zoom_in=delta > 0, center=self._event_center(ev, axis))
+        self.zoom_axis(zoom_axis, zoom_in=delta > 0, center=self._event_center(ev, zoom_axis))
         ev.accept()
 
     def mouseDragEvent(self, ev: object, axis: int | None = None) -> None:  # noqa: N802 - Qt override name.
@@ -389,6 +390,38 @@ class WaveformPlot(QtWidgets.QWidget):
         self.reset_view()
         self.cursorChanged.emit()
 
+    def replace_data_preserving_view(self, data: WaveformData, *, select: set[str] | None = None) -> None:
+        x_range = tuple(float(value) for value in self.view_box.viewRange()[0])
+        group_y_ranges = {
+            group: tuple(float(value) for value in self._view_box_for_group(group).viewRange()[1])
+            for group in ("left", "right")
+        }
+        previous_settings = self.axis_settings
+        self.data = data
+        self.axis_settings = {
+            channel.name: previous_settings.get(
+                channel.name,
+                AxisGroupSettings(group="left", unit=channel.unit or ""),
+            )
+            for channel in data.channels
+        }
+        self.selected_channels.intersection_update({channel.name for channel in data.channels})
+        if select is not None:
+            self.selected_channels.update(select)
+        if self.focused_channel not in self.selected_channels:
+            self.focused_channel = None
+        self._redraw()
+        if np.isfinite(x_range).all() and x_range[0] != x_range[1]:
+            self.plot.setXRange(x_range[0], x_range[1], padding=0.0)
+            self.region.setRegion(x_range)
+            self._set_preview_range_for_region(x_range[0], x_range[1])
+        for group, y_range in group_y_ranges.items():
+            if np.isfinite(y_range).all() and y_range[0] != y_range[1]:
+                self._view_box_for_group(group).setYRange(y_range[0], y_range[1], padding=0.0)
+        self.apply_axis_ranges(default_missing=True)
+        self.update_axis_highlight()
+        self.cursorChanged.emit()
+
     def set_selected_channels(self, selected: set[str]) -> None:
         self.selected_channels = set(selected)
         if self.focused_channel not in self.selected_channels:
@@ -457,6 +490,16 @@ class WaveformPlot(QtWidgets.QWidget):
         self.active_y_group = group
         self.update_axis_highlight()
         self.activeAxisGroupChanged.emit(self.active_y_group)
+
+    def focus_channel(self, channel_name: str) -> None:
+        if self.data is None or channel_name not in {channel.name for channel in self.data.channels}:
+            return
+        if channel_name not in self.selected_channels:
+            self.selected_channels.add(channel_name)
+            self._redraw()
+        self.focused_channel = channel_name
+        self.set_active_y_group(self._channel_group(channel_name))
+        self._update_curve_focus()
 
     def set_cursor_axis_group(self, group: str, *, preserve_visual_position: bool = True) -> None:
         group = "right" if group == "right" else "left"
@@ -532,6 +575,14 @@ class WaveformPlot(QtWidgets.QWidget):
         else:
             values["active_dy"] = None
         return values
+
+    def x_cursor_range(self) -> tuple[float, float] | None:
+        if not all(line.isVisible() for line in self.x_cursors):
+            return None
+        values = [self._line_value(line) for line in self.x_cursors]
+        if values[0] is None or values[1] is None or values[0] == values[1]:
+            return None
+        return tuple(sorted((values[0], values[1])))
 
     def _redraw(self) -> None:
         self._clear_plot_curves()
@@ -1131,3 +1182,161 @@ def _wheel_delta(ev: QtGui.QWheelEvent) -> int:
     if hasattr(ev, "delta"):
         return ev.delta()
     return 0
+
+
+def _wheel_axis_from_event(ev: object, axis: int | None) -> str:
+    if axis == 0:
+        return "x"
+    if axis == 1:
+        return "y"
+    return "y" if _has_control_modifier(ev) else "x"
+
+
+class SpectrumPlot(QtWidgets.QWidget):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.spectrum: SpectrumData | None = None
+        self.frequency_range: tuple[float, float] | None = None
+        self._display_frequency = np.array([], dtype=float)
+        self._display_magnitude = np.array([], dtype=float)
+        self.view_box = SpectrumViewBox()
+        self.plot = pg.PlotWidget(viewBox=self.view_box)
+        self.plot.setBackground(PLOT_BACKGROUND_COLOR)
+        self.plot.showGrid(x=True, y=True, alpha=0.25)
+        self.plot.setLabel("bottom", "Frequency", units="Hz")
+        self.plot.setLabel("left", "Magnitude")
+        self.plot.setMouseEnabled(x=True, y=True)
+        self.curve = pg.PlotDataItem(pen=pg.mkPen("#ffd400", width=CURVE_WIDTH))
+        self.plot.addItem(self.curve)
+        self.hover_label = pg.TextItem(anchor=(0, 1), color="#ffffff", fill=CURSOR_LABEL_FILL)
+        self.hover_label.setZValue(FOCUSED_CURVE_Z + 10)
+        self.hover_label.hide()
+        self.plot.addItem(self.hover_label)
+        self._mouse_proxy = pg.SignalProxy(
+            self.plot.scene().sigMouseMoved,
+            rateLimit=30,
+            slot=self._on_mouse_moved,
+        )
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.plot)
+
+    def set_spectrum(self, spectrum: SpectrumData) -> None:
+        self.spectrum = spectrum
+        self.frequency_range = spectrum.frequency_range
+        self._redraw(reset_view=True)
+
+    def set_frequency_range(self, frequency_range: tuple[float, float]) -> None:
+        self.frequency_range = tuple(sorted(frequency_range))
+        self._redraw(reset_view=True)
+
+    def clear(self) -> None:
+        self.spectrum = None
+        self.frequency_range = None
+        self._display_frequency = np.array([], dtype=float)
+        self._display_magnitude = np.array([], dtype=float)
+        self.curve.setData([], [])
+        self.hover_label.hide()
+
+    def reset_view(self) -> None:
+        self._redraw(reset_view=True)
+
+    def _redraw(self, *, reset_view: bool = False) -> None:
+        if self.spectrum is None:
+            self.curve.setData([], [])
+            return
+        frequency_range = self.frequency_range or self.spectrum.frequency_range
+        frequency, magnitude = filtered_spectrum(self.spectrum, frequency_range)
+        self._display_frequency = frequency
+        self._display_magnitude = magnitude
+        self.curve.setData(frequency, magnitude)
+        self.curve.setPen(pg.mkPen(self.spectrum.color, width=CURVE_WIDTH))
+        self.view_box.setLimits(xMin=0.0, yMin=0.0)
+        if frequency.size >= 2 and reset_view:
+            self.plot.setXRange(max(0.0, float(frequency[0])), max(0.0, float(frequency[-1])), padding=0.02)
+        finite_magnitude = magnitude[np.isfinite(magnitude)]
+        if finite_magnitude.size and reset_view:
+            y_max = float(np.nanmax(finite_magnitude))
+            if y_max <= 0:
+                y_max = 1.0
+            self.plot.setYRange(0.0, y_max, padding=0.05)
+        self.view_box.clamp_to_non_negative()
+
+    def _on_mouse_moved(self, event: object) -> None:
+        if self._display_frequency.size == 0 or self._display_magnitude.size == 0:
+            self.hover_label.hide()
+            return
+        position = event[0] if isinstance(event, tuple) else event
+        if not self.plot.sceneBoundingRect().contains(position):
+            self.hover_label.hide()
+            return
+        point = self.plot.getPlotItem().vb.mapSceneToView(position)
+        index = int(np.argmin(np.abs(self._display_frequency - point.x())))
+        if not self._is_peak_index(index):
+            self.hover_label.hide()
+            return
+        frequency = float(self._display_frequency[index])
+        magnitude = float(self._display_magnitude[index])
+        if not np.isfinite(frequency) or not np.isfinite(magnitude):
+            self.hover_label.hide()
+            return
+        x_range, y_range = self.view_box.viewRange()
+        tolerance_x = max((x_range[1] - x_range[0]) * 0.015, np.finfo(float).eps)
+        tolerance_y = max((y_range[1] - y_range[0]) * 0.08, np.finfo(float).eps)
+        if abs(point.x() - frequency) > tolerance_x or abs(point.y() - magnitude) > tolerance_y:
+            self.hover_label.hide()
+            return
+        self.hover_label.setText(f"f={frequency:.8g} Hz\nE={magnitude * magnitude:.8g}")
+        self.hover_label.setPos(frequency, magnitude)
+        self.hover_label.show()
+
+    def _is_peak_index(self, index: int) -> bool:
+        if index <= 0 or index >= self._display_magnitude.size - 1:
+            return self._display_magnitude.size <= 2
+        value = self._display_magnitude[index]
+        return bool(value >= self._display_magnitude[index - 1] and value >= self._display_magnitude[index + 1])
+
+
+class SpectrumViewBox(pg.ViewBox):
+    """Spectrum navigation mirrors waveform X/Y gestures, bounded at zero."""
+
+    def wheelEvent(self, ev: QtGui.QWheelEvent, axis: int | None = None) -> None:  # noqa: N802 - Qt override name.
+        zoom_axis = _wheel_axis_from_event(ev, axis)
+        delta = _wheel_delta(ev)
+        if delta == 0:
+            ev.ignore()
+            return
+        scene_position = None
+        if hasattr(ev, "scenePosition"):
+            scene_position = ev.scenePosition()
+        elif hasattr(ev, "scenePos"):
+            scene_position = ev.scenePos()
+        center = self.mapSceneToView(scene_position) if scene_position is not None else None
+        factor = 0.8 if delta > 0 else 1.25
+        if zoom_axis == "y":
+            self.scaleBy(y=factor, center=center)
+        else:
+            self.scaleBy(x=factor, center=center)
+        self.clamp_to_non_negative()
+        ev.accept()
+
+    def mouseDragEvent(self, ev: object, axis: int | None = None) -> None:  # noqa: N802 - Qt override name.
+        ev.accept()
+        current = self.mapToView(ev.pos())
+        previous = self.mapToView(ev.lastPos())
+        delta = previous - current
+        if _has_control_modifier(ev):
+            self.translateBy(y=delta.y())
+        else:
+            self.translateBy(x=delta.x())
+        self.clamp_to_non_negative()
+
+    def clamp_to_non_negative(self) -> None:
+        x_range, y_range = self.viewRange()
+        x_low, x_high = x_range
+        y_low, y_high = y_range
+        if x_low < 0.0:
+            self.setXRange(0.0, max(0.0, x_high - x_low), padding=0.0)
+        if y_low < 0.0:
+            self.setYRange(0.0, max(0.0, y_high - y_low), padding=0.0)
