@@ -45,6 +45,27 @@ def test_calculated_trace_add_remove_updates_viewer_state(tmp_path: Path) -> Non
     assert "sum" not in window.waveform_plot.axis_settings
 
 
+def test_operand_pick_buttons_use_clicked_waveform(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    _select_combo_data(window.math_function, "add")
+
+    window._start_operand_pick("a", True)
+    window.waveform_plot._on_curve_clicked("current", object())
+
+    assert window.math_operand_a.currentText() == "current"
+    assert window.pending_math_operand_pick is None
+    assert window.pick_operand_a.isChecked() is False
+
+    window._start_operand_pick("b", True)
+    window.waveform_plot._on_curve_clicked("voltage", object())
+
+    assert window.math_operand_b.currentText() == "voltage"
+    assert window.pick_operand_b.isChecked() is False
+
+
 def test_fft_uses_x_cursors_window_and_frequency_range(tmp_path: Path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app

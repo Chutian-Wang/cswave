@@ -165,6 +165,7 @@ class WaveformPlot(QtWidgets.QWidget):
     cursorChanged = QtCore.Signal()
     viewRangeChanged = QtCore.Signal(tuple)
     activeAxisGroupChanged = QtCore.Signal(str)
+    traceClicked = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -729,6 +730,7 @@ class WaveformPlot(QtWidgets.QWidget):
         self.focused_channel = channel_name
         self.set_active_y_group(self._channel_group(channel_name))
         self._update_curve_focus()
+        self.traceClicked.emit(channel_name)
 
     def _on_plot_scene_clicked(self, event: object) -> None:
         button = event.button() if hasattr(event, "button") else None

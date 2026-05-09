@@ -51,7 +51,7 @@ The Math tab creates session-only calculated outputs from loaded waveforms. Load
 
 ### Time-Domain Traces
 
-Choose a function, select operand `A` and, for binary functions, operand `B`, then enter or accept the generated output name and press `Add`. Time-domain results are added as normal waveform traces, so they appear in the channel list, legend, preview, axis setup, trace highlighting, and cursor readouts.
+Choose a function, select operand `A` and, for binary functions, operand `B`, then enter or accept the generated output name and press `Add`. You can also press `Pick` next to an operand and then click a waveform trace in the main plot to fill that operand. Time-domain results are added as normal waveform traces, so they appear in the channel list, legend, preview, axis setup, trace highlighting, and cursor readouts.
 
 Supported time-domain functions:
 

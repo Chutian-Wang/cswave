@@ -30,11 +30,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectra: dict[str, SpectrumData] = {}
         self.channel_checks: dict[str, QtWidgets.QCheckBox] = {}
         self.last_cursor_channel_by_group: dict[str, str] = {}
+        self.pending_math_operand_pick: str | None = None
 
         self.waveform_plot = WaveformPlot()
         self.spectrum_plot = SpectrumPlot()
         self.waveform_plot.cursorChanged.connect(self._update_cursor_panel)
         self.waveform_plot.activeAxisGroupChanged.connect(self._sync_axis_group_selector)
+        self.waveform_plot.traceClicked.connect(self._math_waveform_picked)
 
         self.channel_panel = QtWidgets.QWidget()
         self.channel_layout = QtWidgets.QVBoxLayout(self.channel_panel)
@@ -359,12 +361,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.math_operand_a = QtWidgets.QComboBox()
         self.math_operand_a.currentIndexChanged.connect(self._math_operand_changed)
-        form.addRow("A", self.math_operand_a)
+        self.pick_operand_a = QtWidgets.QPushButton("Pick")
+        self.pick_operand_a.setCheckable(True)
+        self.pick_operand_a.setToolTip("Click, then click a waveform trace to use it as operand A")
+        self.pick_operand_a.clicked.connect(lambda checked: self._start_operand_pick("a", checked))
+        form.addRow("A", self._operand_picker_row(self.math_operand_a, self.pick_operand_a))
 
         self.math_operand_b = QtWidgets.QComboBox()
         self.math_operand_b.currentIndexChanged.connect(self._math_operand_changed)
         self.math_operand_b_label = QtWidgets.QLabel("B")
-        form.addRow(self.math_operand_b_label, self.math_operand_b)
+        self.pick_operand_b = QtWidgets.QPushButton("Pick")
+        self.pick_operand_b.setCheckable(True)
+        self.pick_operand_b.setToolTip("Click, then click a waveform trace to use it as operand B")
+        self.pick_operand_b.clicked.connect(lambda checked: self._start_operand_pick("b", checked))
+        self.math_operand_b_row = self._operand_picker_row(self.math_operand_b, self.pick_operand_b)
+        form.addRow(self.math_operand_b_label, self.math_operand_b_row)
 
         self.fft_window = QtWidgets.QComboBox()
         for window in WINDOW_FUNCTIONS:
@@ -427,6 +438,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._math_function_changed()
         return panel
+
+    @staticmethod
+    def _operand_picker_row(combo: QtWidgets.QComboBox, button: QtWidgets.QPushButton) -> QtWidgets.QWidget:
+        row = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(combo, stretch=1)
+        layout.addWidget(button)
+        return row
 
     def _rebuild_channels(self, channels: list[ChannelData]) -> None:
         while self.channel_layout.count() > 2:
@@ -586,8 +607,11 @@ class MainWindow(QtWidgets.QMainWindow):
         is_binary = function is not None and function.arity == 2
         is_fft = function is not None and function.domain == "frequency"
         self.math_operand_b.setEnabled(is_binary)
-        self.math_operand_b.setVisible(is_binary)
+        self.math_operand_b_row.setVisible(is_binary)
         self.math_operand_b_label.setVisible(is_binary)
+        self.pick_operand_b.setVisible(is_binary)
+        if not is_binary and self.pending_math_operand_pick == "b":
+            self._clear_operand_pick()
         self.fft_window.setEnabled(is_fft)
         self.fft_window.setVisible(is_fft)
         self.fft_window_label.setVisible(is_fft)
@@ -607,6 +631,34 @@ class MainWindow(QtWidgets.QMainWindow):
         operand_b = self.math_operand_b.currentText() if MATH_FUNCTION_BY_ID[function_id].arity == 2 else None
         if operand_a:
             self.math_result_name.setText(default_result_name(function_id, operand_a, operand_b))
+
+    def _start_operand_pick(self, operand: str, checked: bool) -> None:
+        if not checked:
+            if self.pending_math_operand_pick == operand:
+                self._clear_operand_pick()
+            return
+        self.pending_math_operand_pick = operand
+        self.pick_operand_a.setChecked(operand == "a")
+        self.pick_operand_b.setChecked(operand == "b")
+        self.plot_tabs.setCurrentWidget(self.waveform_plot)
+        self.statusBar().showMessage(f"Click a waveform trace to select operand {operand.upper()}")
+
+    def _clear_operand_pick(self) -> None:
+        self.pending_math_operand_pick = None
+        self.pick_operand_a.setChecked(False)
+        self.pick_operand_b.setChecked(False)
+
+    def _math_waveform_picked(self, channel_name: str) -> None:
+        if self.pending_math_operand_pick is None:
+            return
+        if self.pending_math_operand_pick == "a":
+            self.math_operand_a.setCurrentText(channel_name)
+            operand = "A"
+        else:
+            self.math_operand_b.setCurrentText(channel_name)
+            operand = "B"
+        self._clear_operand_pick()
+        self.statusBar().showMessage(f"Operand {operand}: {channel_name}")
 
     def _add_math_output(self) -> None:
         if self.data is None:

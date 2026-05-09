@@ -71,6 +71,26 @@ def test_focused_trace_keeps_other_traces_opaque_and_curves_optimized(tmp_path) 
     assert plot.curves["voltage"].opts["skipFiniteCheck"] is True
 
 
+def test_curve_click_emits_trace_clicked_signal(tmp_path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    plot = WaveformPlot()
+    data = WaveformData(
+        time=np.arange(3.0),
+        channels=[ChannelData("voltage", np.array([0.0, 1.0, 2.0]), "#ffd400", "V")],
+        ignored_columns=[],
+        source_path=tmp_path / "wave.csv",
+        time_column="time",
+    )
+    plot.set_data(data)
+    clicked: list[str] = []
+    plot.traceClicked.connect(clicked.append)
+
+    plot._on_curve_clicked("voltage", object())
+
+    assert clicked == ["voltage"]
+
+
 def test_interaction_uses_fast_downsampling_and_preview_is_throttled(tmp_path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app
