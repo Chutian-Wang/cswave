@@ -80,7 +80,7 @@ Time-base options:
 
 | Mode | Behavior |
 | --- | --- |
-| `Time column` | Uses a selected numeric column as the X axis. The column must be finite, strictly increasing, and uniformly spaced. The selected time column is not plotted as a signal. |
+| `Time column` | Uses a selected numeric column as the X axis. The column must be finite and strictly increasing. Nonuniform spacing is allowed with a warning; FFT uses median spacing. The selected time column is not plotted as a signal. |
 | `Sample rate (Sa/s)` | Generates time as `sample_index / sample_rate`. All valid numeric columns, including any detected time column, are treated as normal signals. |
 | `Sample interval (s/pt)` | Generates time as `sample_index * sample_interval`. All valid numeric columns, including any detected time column, are treated as normal signals. |
 | `Sample index` | Uses `0, 1, 2, ...` as the X axis. All valid numeric columns are treated as normal signals. |
@@ -108,7 +108,7 @@ Invalid numerical results, such as divide-by-zero or square root of a negative v
 
 ### FFT Spectrum
 
-Select `FFT(A)` to create a frequency-domain spectrum from waveform `A`. The spectrum opens in the `Spectrum` view, uses the source waveform color, and plots linear magnitude versus frequency in Hz.
+Select `FFT(A)` to create a frequency-domain spectrum from waveform `A`. The spectrum opens in the `Spectrum` view, uses the source waveform color, and plots magnitude in dB versus frequency in Hz.
 
 FFT controls:
 
@@ -133,7 +133,34 @@ Spectrum view:
 - `Ctrl`/`Cmd` + wheel zooms magnitude.
 - Drag pans frequency.
 - `Ctrl`/`Cmd` + drag pans magnitude.
-- Frequency and magnitude are clamped at zero.
-- Hover near a spectral peak to show frequency and energy.
+- Frequency is clamped to the displayed spectrum range.
+- Hover near a spectral peak to show frequency and magnitude in dB.
 
 Clicking an item in the Math output list switches to its corresponding view. Calculated waveform outputs switch to `Waveforms` and highlight the trace; FFT outputs switch to `Spectrum`.
+
+## Localization
+
+The GUI uses Qt-native translation support. English is the source language and fallback.
+
+By default, the app uses the operating system language when a matching compiled translation exists. You can also pass an explicit startup locale:
+
+```bash
+python main.py --language zh_CN example_csv/1t1r_set_read_0P1V.csv
+```
+
+Use `--language system` to explicitly request the system language.
+
+Translation files live in `translations/`:
+
+- `cswave_en.ts` is the English reference catalog.
+- `cswave_zh_CN.ts` / `.qm` and `cswave_ja_JP.ts` / `.qm` provide Chinese and Japanese translations.
+- Translators can create additional `cswave_<locale>.ts` files.
+- Compiled runtime files are named `cswave_<locale>.qm`.
+
+Typical translator workflow:
+
+```bash
+pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_en.ts
+pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_zh_CN.ts
+pyside6-lrelease translations/cswave_zh_CN.ts -qm translations/cswave_zh_CN.qm
+```

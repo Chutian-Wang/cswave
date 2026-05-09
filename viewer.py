@@ -20,6 +20,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from plot_widgets import AxisGroupSettings, SpectrumPlot, WaveformPlot
 
 
+def _viewer_tr(text: str) -> str:
+    return QtCore.QCoreApplication.translate("viewer", text)
+
+
 @dataclass(frozen=True)
 class TimebaseSettings:
     kind: str
@@ -111,6 +115,262 @@ class VerticalTextButton(QtWidgets.QPushButton):
         painter.drawText(text_rect, QtCore.Qt.AlignmentFlag.AlignCenter, self.text())
 
 
+def _operand_picker_row(combo: QtWidgets.QComboBox, button: QtWidgets.QPushButton) -> QtWidgets.QWidget:
+    row = QtWidgets.QWidget()
+    layout = QtWidgets.QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(6)
+    layout.addWidget(combo, stretch=1)
+    layout.addWidget(button)
+    return row
+
+
+class ChannelsPanel(QtWidgets.QWidget):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.channel_layout = QtWidgets.QVBoxLayout(self)
+        self.channel_layout.setContentsMargins(8, 8, 8, 8)
+        self.channel_layout.setSpacing(6)
+        self.channel_layout.addWidget(QtWidgets.QLabel(self.tr("Channels")))
+        self.channel_layout.addStretch()
+
+
+class CursorPanel(QtWidgets.QWidget):
+    def __init__(
+        self,
+        *,
+        x_cursor_toggle: QtWidgets.QCheckBox,
+        y_cursor_toggle: QtWidgets.QCheckBox,
+        cursor_axis_selector: QtWidgets.QComboBox,
+        active_channel: QtWidgets.QComboBox,
+        reset_callback: object,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.cursor_labels = {
+            key: QtWidgets.QLabel("-")
+            for key in ("X1", "X2", "dX", "Y1", "Y2", "dY", "Active Y1", "Active Y2", "Active dY")
+        }
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        controls = QtWidgets.QGroupBox(self.tr("Controls"))
+        controls_layout = QtWidgets.QGridLayout(controls)
+        controls_layout.setContentsMargins(8, 8, 8, 8)
+        controls_layout.addWidget(x_cursor_toggle, 0, 0)
+        controls_layout.addWidget(y_cursor_toggle, 0, 1)
+        reset_cursors = QtWidgets.QPushButton(self.tr("Reset Cursors"))
+        reset_cursors.clicked.connect(reset_callback)
+        controls_layout.addWidget(reset_cursors, 1, 0, 1, 2)
+        controls_layout.addWidget(QtWidgets.QLabel(self.tr("Cursor group")), 2, 0)
+        controls_layout.addWidget(cursor_axis_selector, 2, 1)
+        controls_layout.addWidget(QtWidgets.QLabel(self.tr("Active channel")), 3, 0)
+        controls_layout.addWidget(active_channel, 3, 1)
+        controls_layout.setColumnStretch(1, 1)
+        layout.addWidget(controls)
+
+        layout.addWidget(self._value_group(self.tr("X Positions"), [(self.tr("X1"), "X1"), (self.tr("X2"), "X2"), (self.tr("Delta X"), "dX")]))
+        layout.addWidget(self._value_group(self.tr("Y Positions"), [(self.tr("Y1"), "Y1"), (self.tr("Y2"), "Y2"), (self.tr("Delta Y"), "dY")]))
+        layout.addWidget(
+            self._value_group(
+                self.tr("Active Channel"),
+                [(self.tr("Y at X1"), "Active Y1"), (self.tr("Y at X2"), "Active Y2"), (self.tr("Delta"), "Active dY")],
+            )
+        )
+        layout.addStretch()
+
+    def _value_group(self, title: str, rows: list[tuple[str, str]]) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox(title)
+        grid = QtWidgets.QGridLayout(box)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setHorizontalSpacing(12)
+        for row, (display_name, key) in enumerate(rows):
+            name_label = QtWidgets.QLabel(display_name)
+            value_label = self.cursor_labels[key]
+            value_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            value_label.setMinimumWidth(92)
+            value_label.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+            grid.addWidget(name_label, row, 0)
+            grid.addWidget(value_label, row, 1)
+        grid.setColumnStretch(1, 1)
+        return box
+
+
+class MathPanel(QtWidgets.QWidget):
+    def __init__(
+        self,
+        *,
+        operand_changed: object,
+        function_changed: object,
+        start_operand_pick: object,
+        add_output: object,
+        update_fft: object,
+        apply_frequency_range: object,
+        output_selected: object,
+        remove_output: object,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        builder = QtWidgets.QGroupBox(self.tr("Builder"))
+        form = QtWidgets.QFormLayout(builder)
+        form.setContentsMargins(8, 8, 8, 8)
+
+        self.math_function = QtWidgets.QComboBox()
+        for function in MATH_FUNCTIONS:
+            self.math_function.addItem(function.label, function.id)
+        self.math_function.currentIndexChanged.connect(function_changed)
+        form.addRow(self.tr("Function"), self.math_function)
+
+        self.math_operand_a = QtWidgets.QComboBox()
+        self.math_operand_a.currentIndexChanged.connect(operand_changed)
+        self.pick_operand_a = QtWidgets.QPushButton(self.tr("Pick"))
+        self.pick_operand_a.setCheckable(True)
+        self.pick_operand_a.setToolTip(self.tr("Click, then click a waveform trace to use it as operand A"))
+        self.pick_operand_a.clicked.connect(lambda checked: start_operand_pick("a", checked))
+        form.addRow(self.tr("A"), _operand_picker_row(self.math_operand_a, self.pick_operand_a))
+
+        self.math_operand_b = QtWidgets.QComboBox()
+        self.math_operand_b.currentIndexChanged.connect(operand_changed)
+        self.math_operand_b_label = QtWidgets.QLabel(self.tr("B"))
+        self.pick_operand_b = QtWidgets.QPushButton(self.tr("Pick"))
+        self.pick_operand_b.setCheckable(True)
+        self.pick_operand_b.setToolTip(self.tr("Click, then click a waveform trace to use it as operand B"))
+        self.pick_operand_b.clicked.connect(lambda checked: start_operand_pick("b", checked))
+        self.math_operand_b_row = _operand_picker_row(self.math_operand_b, self.pick_operand_b)
+        form.addRow(self.math_operand_b_label, self.math_operand_b_row)
+
+        self.fft_window = QtWidgets.QComboBox()
+        for window in WINDOW_FUNCTIONS:
+            self.fft_window.addItem(window.label, window.id)
+        self.fft_window_label = QtWidgets.QLabel(self.tr("Window"))
+        form.addRow(self.fft_window_label, self.fft_window)
+
+        self.fft_remove_dc = QtWidgets.QCheckBox(self.tr("Remove DC offset"))
+        form.addRow(self.fft_remove_dc)
+
+        self.fft_zero_pad = QtWidgets.QComboBox()
+        for option_id, label in ZERO_PAD_OPTIONS:
+            self.fft_zero_pad.addItem(label, option_id)
+        self.fft_zero_pad.setToolTip(
+            self.tr("Adds zeros after the selected waveform segment to create denser FFT bins. Does not improve true frequency resolution.")
+        )
+        self.fft_zero_pad_label = QtWidgets.QLabel(self.tr("Zero pad"))
+        form.addRow(self.fft_zero_pad_label, self.fft_zero_pad)
+
+        self.math_result_name = QtWidgets.QLineEdit()
+        form.addRow(self.tr("Name"), self.math_result_name)
+
+        buttons = QtWidgets.QWidget()
+        buttons_layout = QtWidgets.QHBoxLayout(buttons)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        add_button = QtWidgets.QPushButton(self.tr("Add"))
+        add_button.clicked.connect(add_output)
+        self.update_fft_button = QtWidgets.QPushButton(self.tr("Update FFT"))
+        self.update_fft_button.clicked.connect(update_fft)
+        buttons_layout.addWidget(add_button)
+        buttons_layout.addWidget(self.update_fft_button)
+        form.addRow(buttons)
+        layout.addWidget(builder)
+
+        self.spectrum_range_box = QtWidgets.QGroupBox(self.tr("Spectrum Range"))
+        spectrum_form = QtWidgets.QFormLayout(self.spectrum_range_box)
+        spectrum_form.setContentsMargins(8, 8, 8, 8)
+        self.frequency_min = QtWidgets.QLineEdit()
+        self.frequency_max = QtWidgets.QLineEdit()
+        apply_frequency = QtWidgets.QPushButton(self.tr("Apply Frequency Range"))
+        apply_frequency.clicked.connect(apply_frequency_range)
+        spectrum_form.addRow(self.tr("Min Hz"), self.frequency_min)
+        spectrum_form.addRow(self.tr("Max Hz"), self.frequency_max)
+        spectrum_form.addRow(apply_frequency)
+        layout.addWidget(self.spectrum_range_box)
+
+        outputs = QtWidgets.QGroupBox(self.tr("Outputs"))
+        outputs_layout = QtWidgets.QVBoxLayout(outputs)
+        outputs_layout.setContentsMargins(8, 8, 8, 8)
+        self.math_outputs = QtWidgets.QListWidget()
+        self.math_outputs.currentTextChanged.connect(output_selected)
+        self.math_outputs.itemClicked.connect(lambda item: output_selected(item.text()))
+        remove_button = QtWidgets.QPushButton(self.tr("Remove"))
+        remove_button.clicked.connect(remove_output)
+        outputs_layout.addWidget(self.math_outputs)
+        outputs_layout.addWidget(remove_button)
+        layout.addWidget(outputs)
+        layout.addStretch()
+
+
+class MeasurePanel(QtWidgets.QWidget):
+    def __init__(
+        self,
+        *,
+        update_measurements: object,
+        start_measure_pick: object,
+        parent: QtWidgets.QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        controls = QtWidgets.QGroupBox(self.tr("Measure"))
+        form = QtWidgets.QFormLayout(controls)
+        form.setContentsMargins(8, 8, 8, 8)
+        self.measure_channel = QtWidgets.QComboBox()
+        self.measure_channel.currentIndexChanged.connect(update_measurements)
+        self.pick_measure_channel = QtWidgets.QPushButton(self.tr("Pick"))
+        self.pick_measure_channel.setCheckable(True)
+        self.pick_measure_channel.setToolTip(self.tr("Click, then click a waveform trace to measure it"))
+        self.pick_measure_channel.clicked.connect(lambda checked: start_measure_pick(checked))
+        self.measure_range = QtWidgets.QComboBox()
+        self.measure_range.addItem(self.tr("Full waveform"), "full")
+        self.measure_range.addItem(self.tr("Between X cursors"), "cursors")
+        self.measure_range.currentIndexChanged.connect(update_measurements)
+        form.addRow(self.tr("Waveform"), _operand_picker_row(self.measure_channel, self.pick_measure_channel))
+        form.addRow(self.tr("Range"), self.measure_range)
+        layout.addWidget(controls)
+
+        self.measure_labels = {
+            key: QtWidgets.QLabel("-")
+            for key in ("max", "min", "avg", "ptp", "rms", "acrms", "period", "frequency")
+        }
+        layout.addWidget(
+            self._measure_group(
+                self.tr("Vertical"),
+                [
+                    (self.tr("Max"), "max"),
+                    (self.tr("Min"), "min"),
+                    (self.tr("Avg"), "avg"),
+                    (self.tr("Peak to peak"), "ptp"),
+                    (self.tr("RMS"), "rms"),
+                    (self.tr("ACRMS"), "acrms"),
+                ],
+            )
+        )
+        layout.addWidget(self._measure_group(self.tr("Horizontal"), [(self.tr("Period"), "period"), (self.tr("Frequency"), "frequency")]))
+        layout.addStretch()
+
+    def _measure_group(self, title: str, rows: list[tuple[str, str]]) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox(title)
+        grid = QtWidgets.QGridLayout(box)
+        grid.setContentsMargins(8, 8, 8, 8)
+        for row, (label, key) in enumerate(rows):
+            name_label = QtWidgets.QLabel(label)
+            value_label = self.measure_labels[key]
+            value_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            value_label.setMinimumWidth(110)
+            value_label.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+            grid.addWidget(name_label, row, 0)
+            grid.addWidget(value_label, row, 1)
+        grid.setColumnStretch(1, 1)
+        return box
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -131,41 +391,72 @@ class MainWindow(QtWidgets.QMainWindow):
         self.waveform_plot.activeAxisGroupChanged.connect(self._sync_axis_group_selector)
         self.waveform_plot.traceClicked.connect(self._waveform_picked)
 
-        self.channel_panel = QtWidgets.QWidget()
-        self.channel_layout = QtWidgets.QVBoxLayout(self.channel_panel)
-        self.channel_layout.setContentsMargins(8, 8, 8, 8)
-        self.channel_layout.setSpacing(6)
-        self.channel_layout.addWidget(QtWidgets.QLabel("Channels"))
-        self.channel_layout.addStretch()
+        self.channel_panel = ChannelsPanel()
+        self.channel_layout = self.channel_panel.channel_layout
 
         self.active_channel = QtWidgets.QComboBox()
         self.cursor_axis_selector = QtWidgets.QComboBox()
-        self.cursor_axis_selector.addItems(["left", "right"])
-        self.cursor_axis_selector.currentTextChanged.connect(self._cursor_axis_changed)
-        self.x_cursor_toggle = QtWidgets.QCheckBox("X cursors")
-        self.y_cursor_toggle = QtWidgets.QCheckBox("Y cursors")
+        self.cursor_axis_selector.addItem(self.tr("Left"), "left")
+        self.cursor_axis_selector.addItem(self.tr("Right"), "right")
+        self.cursor_axis_selector.currentIndexChanged.connect(lambda _index: self._cursor_axis_changed(self.cursor_axis_selector.currentData()))
+        self.x_cursor_toggle = QtWidgets.QCheckBox(self.tr("X cursors"))
+        self.y_cursor_toggle = QtWidgets.QCheckBox(self.tr("Y cursors"))
         self.x_cursor_toggle.toggled.connect(self._set_x_cursors_visible)
         self.y_cursor_toggle.toggled.connect(self._set_y_cursors_visible)
         self.active_channel.currentTextChanged.connect(self._active_channel_changed)
 
-        self.cursor_labels = {
-            key: QtWidgets.QLabel("-")
-            for key in ("X1", "X2", "dX", "Y1", "Y2", "dY", "Active Y1", "Active Y2", "Active dY")
-        }
-        cursor_panel = self._build_cursor_panel()
-        math_panel = self._build_math_panel()
-        measure_panel = self._build_measure_panel()
+        cursor_panel = CursorPanel(
+            x_cursor_toggle=self.x_cursor_toggle,
+            y_cursor_toggle=self.y_cursor_toggle,
+            cursor_axis_selector=self.cursor_axis_selector,
+            active_channel=self.active_channel,
+            reset_callback=self._reset_cursors,
+        )
+        self.cursor_labels = cursor_panel.cursor_labels
+        math_panel = MathPanel(
+            operand_changed=self._math_operand_changed,
+            function_changed=self._math_function_changed,
+            start_operand_pick=self._start_operand_pick,
+            add_output=self._add_math_output,
+            update_fft=self._update_fft_spectrum,
+            apply_frequency_range=self._apply_frequency_range,
+            output_selected=self._math_output_selected,
+            remove_output=self._remove_math_output,
+        )
+        self.math_function = math_panel.math_function
+        self.math_operand_a = math_panel.math_operand_a
+        self.pick_operand_a = math_panel.pick_operand_a
+        self.math_operand_b = math_panel.math_operand_b
+        self.math_operand_b_label = math_panel.math_operand_b_label
+        self.pick_operand_b = math_panel.pick_operand_b
+        self.math_operand_b_row = math_panel.math_operand_b_row
+        self.fft_window = math_panel.fft_window
+        self.fft_window_label = math_panel.fft_window_label
+        self.fft_remove_dc = math_panel.fft_remove_dc
+        self.fft_zero_pad = math_panel.fft_zero_pad
+        self.fft_zero_pad_label = math_panel.fft_zero_pad_label
+        self.math_result_name = math_panel.math_result_name
+        self.update_fft_button = math_panel.update_fft_button
+        self.spectrum_range_box = math_panel.spectrum_range_box
+        self.frequency_min = math_panel.frequency_min
+        self.frequency_max = math_panel.frequency_max
+        self.math_outputs = math_panel.math_outputs
+        measure_panel = MeasurePanel(update_measurements=self._update_measurements, start_measure_pick=self._start_measure_pick)
+        self.measure_channel = measure_panel.measure_channel
+        self.pick_measure_channel = measure_panel.pick_measure_channel
+        self.measure_range = measure_panel.measure_range
+        self.measure_labels = measure_panel.measure_labels
 
         self.side_tabs = DetachableTabWidget()
-        self.side_tabs.addTab(self._scroll_area(self.channel_panel), "Channels")
-        self.side_tabs.addTab(cursor_panel, "Cursors")
-        self.side_tabs.addTab(math_panel, "Math")
-        self.side_tabs.addTab(measure_panel, "Measure")
+        self.side_tabs.addTab(self._scroll_area(self.channel_panel), self.tr("Channels"))
+        self.side_tabs.addTab(cursor_panel, self.tr("Cursors"))
+        self.side_tabs.addTab(math_panel, self.tr("Math"))
+        self.side_tabs.addTab(measure_panel, self.tr("Measure"))
         self.side_tabs.setMinimumWidth(260)
 
         self.plot_tabs = QtWidgets.QTabWidget()
-        self.plot_tabs.addTab(self.waveform_plot, "Waveforms")
-        self.plot_tabs.addTab(self.spectrum_plot, "Spectrum")
+        self.plot_tabs.addTab(self.waveform_plot, self.tr("Waveforms"))
+        self.plot_tabs.addTab(self.spectrum_plot, self.tr("Spectrum"))
 
         self.splitter = QtWidgets.QSplitter()
         self.splitter.addWidget(self.plot_tabs)
@@ -175,15 +466,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.splitter.splitterMoved.connect(self._update_side_panel_restore_tab)
         self.setCentralWidget(self.splitter)
 
-        self.side_panel_restore_tab = VerticalTextButton("^ Panel ^", self)
-        self.side_panel_restore_tab.setToolTip("Restore right panel")
+        self.side_panel_restore_tab = VerticalTextButton(self.tr("^ Panel ^"), self)
+        self.side_panel_restore_tab.setToolTip(self.tr("Restore right panel"))
         self.side_panel_restore_tab.setFixedSize(self.side_panel_restore_tab.sizeHint())
         self.side_panel_restore_tab.clicked.connect(self._restore_side_panel)
         self.side_panel_restore_tab.hide()
 
-        self.statusBar().showMessage("Load a waveform file to begin")
+        self.statusBar().showMessage(self.tr("Load a waveform file to begin"))
         self._build_actions()
         self._build_shortcuts()
+        self._math_function_changed()
         self._update_side_panel_restore_tab()
 
     def load_file(self, path: str | Path, *, sheet_name: str | None = None, show_setup: bool = False) -> None:
@@ -205,11 +497,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_measure_controls()
         self._sync_math_outputs()
         self._sync_cursor_axis_selector()
-        ignored = f" Ignored {len(data.ignored_columns)} column(s)." if data.ignored_columns else ""
-        time_source = data.time_column or "sample index"
-        sheet = f", sheet: {data.sheet_name}" if data.sheet_name else ""
+        ignored = self.tr(" Ignored {count} column(s).").format(count=len(data.ignored_columns)) if data.ignored_columns else ""
+        time_source = data.time_column or self.tr("sample index")
+        sheet = self.tr(", sheet: {sheet}").format(sheet=data.sheet_name) if data.sheet_name else ""
         self.statusBar().showMessage(
-            f"Loaded {data.source_path.name}{sheet}: {len(data.channels)} channel(s), time base: {time_source}.{ignored}"
+            self.tr("Loaded {name}{sheet}: {count} channel(s), time base: {time_source}.{ignored}").format(
+                name=data.source_path.name,
+                sheet=sheet,
+                count=len(data.channels),
+                time_source=time_source,
+                ignored=ignored,
+            )
         )
         self._update_cursor_panel()
         if show_setup:
@@ -226,66 +524,66 @@ class MainWindow(QtWidgets.QMainWindow):
         self._open_waveform_setup()
 
     def _build_actions(self) -> None:
-        toolbar = self.addToolBar("Main")
+        toolbar = self.addToolBar(self.tr("Main"))
         toolbar.setObjectName("MainToolbar")
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
 
-        toolbar.addWidget(_toolbar_section_label("File"))
+        toolbar.addWidget(_toolbar_section_label(self.tr("File")))
 
-        open_action = QtGui.QAction("Open Waveform", self)
+        open_action = QtGui.QAction(self.tr("Open Waveform"), self)
         open_action.setShortcut(QtGui.QKeySequence.Open)
         open_action.triggered.connect(self._open_dialog)
         toolbar.addAction(open_action)
 
         toolbar.addSeparator()
-        toolbar.addWidget(_toolbar_section_label("View"))
+        toolbar.addWidget(_toolbar_section_label(self.tr("View")))
 
-        reset_action = QtGui.QAction("Reset View", self)
+        reset_action = QtGui.QAction(self.tr("Reset View"), self)
         reset_action.triggered.connect(self._reset_active_view)
         toolbar.addAction(reset_action)
 
-        waveform_setup_action = QtGui.QAction("Waveform Setup...", self)
-        waveform_setup_action.setToolTip("Configure left/right axis grouping, units, and Y ranges")
+        waveform_setup_action = QtGui.QAction(self.tr("Waveform Setup..."), self)
+        waveform_setup_action.setToolTip(self.tr("Configure left/right axis grouping, units, and Y ranges"))
         waveform_setup_action.triggered.connect(self._open_waveform_setup)
         toolbar.addAction(waveform_setup_action)
 
         toolbar.addSeparator()
-        toolbar.addWidget(_toolbar_section_label("Navigate"))
-        toolbar.addWidget(_toolbar_field_label("Y group"))
+        toolbar.addWidget(_toolbar_section_label(self.tr("Navigate")))
+        toolbar.addWidget(_toolbar_field_label(self.tr("Y group")))
         self.axis_group_selector = QtWidgets.QComboBox()
-        self.axis_group_selector.addItem("Left", "left")
-        self.axis_group_selector.addItem("Right", "right")
-        self.axis_group_selector.setToolTip("Active Y axis group for Y pan and zoom")
+        self.axis_group_selector.addItem(self.tr("Left"), "left")
+        self.axis_group_selector.addItem(self.tr("Right"), "right")
+        self.axis_group_selector.setToolTip(self.tr("Active Y axis group for Y pan and zoom"))
         self.axis_group_selector.setMinimumContentsLength(5)
         self._sync_axis_group_selector()
         self.axis_group_selector.currentIndexChanged.connect(self._axis_group_changed)
         toolbar.addWidget(self.axis_group_selector)
 
-        toolbar.addWidget(_toolbar_field_label("Zoom"))
+        toolbar.addWidget(_toolbar_field_label(self.tr("Zoom")))
         self.zoom_axis_selector = QtWidgets.QComboBox()
         self.zoom_axis_selector.addItems(["X", "Y"])
-        self.zoom_axis_selector.setToolTip("Axis used by toolbar zoom buttons")
+        self.zoom_axis_selector.setToolTip(self.tr("Axis used by toolbar zoom buttons"))
         self.zoom_axis_selector.setMinimumContentsLength(1)
         toolbar.addWidget(self.zoom_axis_selector)
 
         zoom_in_action = QtGui.QAction("+", self)
-        zoom_in_action.setToolTip("Zoom in on the selected axis")
+        zoom_in_action.setToolTip(self.tr("Zoom in on the selected axis"))
         zoom_in_action.triggered.connect(lambda: self.waveform_plot.zoom_in(self._selected_zoom_axis()))
         toolbar.addAction(zoom_in_action)
 
         zoom_out_action = QtGui.QAction("-", self)
-        zoom_out_action.setToolTip("Zoom out on the selected axis")
+        zoom_out_action.setToolTip(self.tr("Zoom out on the selected axis"))
         zoom_out_action.triggered.connect(lambda: self.waveform_plot.zoom_out(self._selected_zoom_axis()))
         toolbar.addAction(zoom_out_action)
 
         toolbar.addSeparator()
-        toolbar.addWidget(_toolbar_section_label("Display"))
-        toolbar.addWidget(_toolbar_field_label("Renderer"))
+        toolbar.addWidget(_toolbar_section_label(self.tr("Display")))
+        toolbar.addWidget(_toolbar_field_label(self.tr("Renderer")))
         self.renderer_selector = QtWidgets.QComboBox()
         self.renderer_selector.addItem("CPU", "cpu")
         self.renderer_selector.addItem("OpenGL", "opengl")
-        self.renderer_selector.setToolTip("Rendering backend for waveform drawing")
+        self.renderer_selector.setToolTip(self.tr("Rendering backend for waveform drawing"))
         self.renderer_selector.setMinimumContentsLength(6)
         self._sync_renderer_selector()
         self.renderer_selector.currentIndexChanged.connect(self._renderer_changed)
@@ -294,16 +592,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def _open_dialog(self) -> None:
         path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
             self,
-            "Open Waveform",
+            self.tr("Open Waveform"),
             str(Path.cwd()),
-            "Waveform files (*.csv *.xls *.xlsx *.xlsm);;CSV files (*.csv);;Excel files (*.xls *.xlsx *.xlsm);;All files (*)",
+            self.tr("Waveform files (*.csv *.xls *.xlsx *.xlsm);;CSV files (*.csv);;Excel files (*.xls *.xlsx *.xlsm);;All files (*)"),
         )
         if not path:
             return
         try:
             self.load_file(path, show_setup=True)
         except Exception as exc:  # noqa: BLE001 - GUI needs user-facing failure.
-            QtWidgets.QMessageBox.critical(self, "Could not load waveform", str(exc))
+            QtWidgets.QMessageBox.critical(self, self.tr("Could not load waveform"), str(exc))
 
     def _select_excel_sheet(self, path: str | Path) -> str | None:
         sheets = excel_sheet_names(path)
@@ -313,8 +611,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return sheets[0]
         sheet, accepted = QtWidgets.QInputDialog.getItem(
             self,
-            "Select Waveform Sheet",
-            "Waveform sheet",
+            self.tr("Select Waveform Sheet"),
+            self.tr("Waveform sheet"),
             sheets,
             0,
             False,
@@ -373,7 +671,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if group not in {"left", "right"}:
             return
         self.waveform_plot.set_active_y_group(group)
-        self.statusBar().showMessage(f"Y control group: {self.waveform_plot.active_y_group.capitalize()} axis")
+        axis = self.tr("Left") if self.waveform_plot.active_y_group == "left" else self.tr("Right")
+        self.statusBar().showMessage(self.tr("Y control group: {axis} axis").format(axis=axis))
 
     def _sync_renderer_selector(self) -> None:
         opengl_index = self.renderer_selector.findData("opengl")
@@ -383,7 +682,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 item.setEnabled(self.waveform_plot.opengl_available)
             self.renderer_selector.setItemData(
                 opengl_index,
-                "Use OpenGL rendering" if self.waveform_plot.opengl_available else "OpenGL is not available",
+                self.tr("Use OpenGL rendering") if self.waveform_plot.opengl_available else self.tr("OpenGL is not available"),
                 QtCore.Qt.ItemDataRole.ToolTipRole,
             )
         current_index = self.renderer_selector.findData(self.waveform_plot.renderer_mode)
@@ -397,11 +696,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if mode not in {"cpu", "opengl"}:
             return
         if self.waveform_plot.set_renderer_mode(mode):
-            self.statusBar().showMessage(f"Renderer: {self.renderer_selector.currentText()}")
+            self.statusBar().showMessage(self.tr("Renderer: {renderer}").format(renderer=self.renderer_selector.currentText()))
             self._sync_renderer_selector()
             return
         self._sync_renderer_selector()
-        QtWidgets.QMessageBox.warning(self, "Renderer unavailable", "OpenGL rendering is not available on this system.")
+        QtWidgets.QMessageBox.warning(self, self.tr("Renderer unavailable"), self.tr("OpenGL rendering is not available on this system."))
 
     def _build_shortcuts(self) -> None:
         toggle_axis = QtGui.QShortcut(QtGui.QKeySequence("T"), self)
@@ -418,9 +717,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _toggle_axis_group(self) -> None:
         self.waveform_plot.toggle_active_y_group()
         self._sync_axis_group_selector()
-        self.statusBar().showMessage(
-            f"Y control group: {self.waveform_plot.active_y_group.capitalize()} axis"
-        )
+        axis = self.tr("Left") if self.waveform_plot.active_y_group == "left" else self.tr("Right")
+        self.statusBar().showMessage(self.tr("Y control group: {axis} axis").format(axis=axis))
 
     def _toggle_x_cursors(self) -> None:
         self.x_cursor_toggle.setChecked(not self.x_cursor_toggle.isChecked())
@@ -430,9 +728,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _open_waveform_setup(self) -> None:
         if self.data is None:
-            QtWidgets.QMessageBox.information(self, "Waveform Setup", "Load a waveform file before configuring axes.")
+            QtWidgets.QMessageBox.information(self, self.tr("Waveform Setup"), self.tr("Load a waveform file before configuring axes."))
             return
-        dialog = AxisSetupDialog(self.data, self.waveform_plot.axis_settings, self.waveform_plot.group_defaults(), self)
+        dialog = WaveformSetupDialog(self.data, self.waveform_plot.axis_settings, self.waveform_plot.group_defaults(), self)
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return
         self._apply_timebase_settings(dialog.timebase_settings())
@@ -443,229 +741,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _open_axis_setup(self) -> None:
         self._open_waveform_setup()
-
-    def _build_cursor_panel(self) -> QtWidgets.QWidget:
-        panel = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(panel)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
-
-        controls = QtWidgets.QGroupBox("Controls")
-        controls_layout = QtWidgets.QGridLayout(controls)
-        controls_layout.setContentsMargins(8, 8, 8, 8)
-        controls_layout.addWidget(self.x_cursor_toggle, 0, 0)
-        controls_layout.addWidget(self.y_cursor_toggle, 0, 1)
-        reset_cursors = QtWidgets.QPushButton("Reset Cursors")
-        reset_cursors.clicked.connect(self._reset_cursors)
-        controls_layout.addWidget(reset_cursors, 1, 0, 1, 2)
-        controls_layout.addWidget(QtWidgets.QLabel("Cursor group"), 2, 0)
-        controls_layout.addWidget(self.cursor_axis_selector, 2, 1)
-        controls_layout.addWidget(QtWidgets.QLabel("Active channel"), 3, 0)
-        controls_layout.addWidget(self.active_channel, 3, 1)
-        controls_layout.setColumnStretch(1, 1)
-        layout.addWidget(controls)
-
-        layout.addWidget(self._cursor_group_box("X Positions", [("X1", "X1"), ("X2", "X2"), ("Delta X", "dX")]))
-        layout.addWidget(self._cursor_group_box("Y Positions", [("Y1", "Y1"), ("Y2", "Y2"), ("Delta Y", "dY")]))
-        layout.addWidget(
-            self._cursor_group_box(
-                "Active Channel",
-                [("Y at X1", "Active Y1"), ("Y at X2", "Active Y2"), ("Delta", "Active dY")],
-            )
-        )
-        layout.addStretch()
-        return panel
-
-    def _cursor_group_box(self, title: str, rows: list[tuple[str, str]]) -> QtWidgets.QGroupBox:
-        box = QtWidgets.QGroupBox(title)
-        grid = QtWidgets.QGridLayout(box)
-        grid.setContentsMargins(8, 8, 8, 8)
-        grid.setHorizontalSpacing(12)
-        for row, (display_name, key) in enumerate(rows):
-            name_label = QtWidgets.QLabel(display_name)
-            value_label = self.cursor_labels[key]
-            value_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-            value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            value_label.setMinimumWidth(92)
-            value_label.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-            grid.addWidget(name_label, row, 0)
-            grid.addWidget(value_label, row, 1)
-        grid.setColumnStretch(1, 1)
-        return box
-
-    def _build_math_panel(self) -> QtWidgets.QWidget:
-        panel = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(panel)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
-
-        builder = QtWidgets.QGroupBox("Builder")
-        form = QtWidgets.QFormLayout(builder)
-        form.setContentsMargins(8, 8, 8, 8)
-
-        self.math_function = QtWidgets.QComboBox()
-        for function in MATH_FUNCTIONS:
-            self.math_function.addItem(function.label, function.id)
-        self.math_function.currentIndexChanged.connect(self._math_function_changed)
-        form.addRow("Function", self.math_function)
-
-        self.math_operand_a = QtWidgets.QComboBox()
-        self.math_operand_a.currentIndexChanged.connect(self._math_operand_changed)
-        self.pick_operand_a = QtWidgets.QPushButton("Pick")
-        self.pick_operand_a.setCheckable(True)
-        self.pick_operand_a.setToolTip("Click, then click a waveform trace to use it as operand A")
-        self.pick_operand_a.clicked.connect(lambda checked: self._start_operand_pick("a", checked))
-        form.addRow("A", self._operand_picker_row(self.math_operand_a, self.pick_operand_a))
-
-        self.math_operand_b = QtWidgets.QComboBox()
-        self.math_operand_b.currentIndexChanged.connect(self._math_operand_changed)
-        self.math_operand_b_label = QtWidgets.QLabel("B")
-        self.pick_operand_b = QtWidgets.QPushButton("Pick")
-        self.pick_operand_b.setCheckable(True)
-        self.pick_operand_b.setToolTip("Click, then click a waveform trace to use it as operand B")
-        self.pick_operand_b.clicked.connect(lambda checked: self._start_operand_pick("b", checked))
-        self.math_operand_b_row = self._operand_picker_row(self.math_operand_b, self.pick_operand_b)
-        form.addRow(self.math_operand_b_label, self.math_operand_b_row)
-
-        self.fft_window = QtWidgets.QComboBox()
-        for window in WINDOW_FUNCTIONS:
-            self.fft_window.addItem(window.label, window.id)
-        self.fft_window_label = QtWidgets.QLabel("Window")
-        form.addRow(self.fft_window_label, self.fft_window)
-
-        self.fft_remove_dc = QtWidgets.QCheckBox("Remove DC offset")
-        form.addRow(self.fft_remove_dc)
-
-        self.fft_zero_pad = QtWidgets.QComboBox()
-        for option_id, label in ZERO_PAD_OPTIONS:
-            self.fft_zero_pad.addItem(label, option_id)
-        self.fft_zero_pad.setToolTip(
-            "Adds zeros after the selected waveform segment to create denser FFT bins. "
-            "Does not improve true frequency resolution."
-        )
-        self.fft_zero_pad_label = QtWidgets.QLabel("Zero pad")
-        form.addRow(self.fft_zero_pad_label, self.fft_zero_pad)
-
-        self.math_result_name = QtWidgets.QLineEdit()
-        form.addRow("Name", self.math_result_name)
-
-        buttons = QtWidgets.QWidget()
-        buttons_layout = QtWidgets.QHBoxLayout(buttons)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        add_button = QtWidgets.QPushButton("Add")
-        add_button.clicked.connect(self._add_math_output)
-        self.update_fft_button = QtWidgets.QPushButton("Update FFT")
-        self.update_fft_button.clicked.connect(self._update_fft_spectrum)
-        buttons_layout.addWidget(add_button)
-        buttons_layout.addWidget(self.update_fft_button)
-        form.addRow(buttons)
-        layout.addWidget(builder)
-
-        self.spectrum_range_box = QtWidgets.QGroupBox("Spectrum Range")
-        spectrum_form = QtWidgets.QFormLayout(self.spectrum_range_box)
-        spectrum_form.setContentsMargins(8, 8, 8, 8)
-        self.frequency_min = QtWidgets.QLineEdit()
-        self.frequency_max = QtWidgets.QLineEdit()
-        apply_frequency = QtWidgets.QPushButton("Apply Frequency Range")
-        apply_frequency.clicked.connect(self._apply_frequency_range)
-        spectrum_form.addRow("Min Hz", self.frequency_min)
-        spectrum_form.addRow("Max Hz", self.frequency_max)
-        spectrum_form.addRow(apply_frequency)
-        layout.addWidget(self.spectrum_range_box)
-
-        outputs = QtWidgets.QGroupBox("Outputs")
-        outputs_layout = QtWidgets.QVBoxLayout(outputs)
-        outputs_layout.setContentsMargins(8, 8, 8, 8)
-        self.math_outputs = QtWidgets.QListWidget()
-        self.math_outputs.currentTextChanged.connect(self._math_output_selected)
-        self.math_outputs.itemClicked.connect(lambda item: self._math_output_selected(item.text()))
-        remove_button = QtWidgets.QPushButton("Remove")
-        remove_button.clicked.connect(self._remove_math_output)
-        outputs_layout.addWidget(self.math_outputs)
-        outputs_layout.addWidget(remove_button)
-        layout.addWidget(outputs)
-        layout.addStretch()
-
-        self._math_function_changed()
-        return panel
-
-    def _build_measure_panel(self) -> QtWidgets.QWidget:
-        panel = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(panel)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
-
-        controls = QtWidgets.QGroupBox("Measure")
-        form = QtWidgets.QFormLayout(controls)
-        form.setContentsMargins(8, 8, 8, 8)
-        self.measure_channel = QtWidgets.QComboBox()
-        self.measure_channel.currentIndexChanged.connect(self._update_measurements)
-        self.pick_measure_channel = QtWidgets.QPushButton("Pick")
-        self.pick_measure_channel.setCheckable(True)
-        self.pick_measure_channel.setToolTip("Click, then click a waveform trace to measure it")
-        self.pick_measure_channel.clicked.connect(lambda checked: self._start_measure_pick(checked))
-        self.measure_range = QtWidgets.QComboBox()
-        self.measure_range.addItem("Full waveform", "full")
-        self.measure_range.addItem("Between X cursors", "cursors")
-        self.measure_range.currentIndexChanged.connect(self._update_measurements)
-        form.addRow("Waveform", self._operand_picker_row(self.measure_channel, self.pick_measure_channel))
-        form.addRow("Range", self.measure_range)
-        layout.addWidget(controls)
-
-        self.measure_labels = {
-            key: QtWidgets.QLabel("-")
-            for key in ("max", "min", "avg", "ptp", "rms", "acrms", "period", "frequency")
-        }
-        layout.addWidget(
-            self._measure_group_box(
-                "Vertical",
-                [
-                    ("Max", "max"),
-                    ("Min", "min"),
-                    ("Avg", "avg"),
-                    ("Peak to peak", "ptp"),
-                    ("RMS", "rms"),
-                    ("ACRMS", "acrms"),
-                ],
-            )
-        )
-        layout.addWidget(
-            self._measure_group_box(
-                "Horizontal",
-                [
-                    ("Period", "period"),
-                    ("Frequency", "frequency"),
-                ],
-            )
-        )
-        layout.addStretch()
-        return panel
-
-    def _measure_group_box(self, title: str, rows: list[tuple[str, str]]) -> QtWidgets.QGroupBox:
-        box = QtWidgets.QGroupBox(title)
-        grid = QtWidgets.QGridLayout(box)
-        grid.setContentsMargins(8, 8, 8, 8)
-        for row, (label, key) in enumerate(rows):
-            name_label = QtWidgets.QLabel(label)
-            value_label = self.measure_labels[key]
-            value_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-            value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            value_label.setMinimumWidth(110)
-            value_label.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
-            grid.addWidget(name_label, row, 0)
-            grid.addWidget(value_label, row, 1)
-        grid.setColumnStretch(1, 1)
-        return box
-
-    @staticmethod
-    def _operand_picker_row(combo: QtWidgets.QComboBox, button: QtWidgets.QPushButton) -> QtWidgets.QWidget:
-        row = QtWidgets.QWidget()
-        layout = QtWidgets.QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        layout.addWidget(combo, stretch=1)
-        layout.addWidget(button)
-        return row
 
     def _rebuild_channels(self, channels: list[ChannelData]) -> None:
         while self.channel_layout.count() > 2:
@@ -697,8 +772,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _channel_checkbox_tooltip(self, name: str) -> str:
         setting = self.waveform_plot.axis_settings.get(name)
         if setting is not None and setting.group == "disabled":
-            return "Disabled in Waveform Setup"
-        return "Show or hide this enabled waveform"
+            return self.tr("Disabled in Waveform Setup")
+        return self.tr("Show or hide this enabled waveform")
 
     def _rebuild_active_channel(self, channels: list[ChannelData]) -> None:
         previous = self.active_channel.currentText()
@@ -757,6 +832,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_cursor_panel()
 
     def _cursor_axis_changed(self, group: str) -> None:
+        if group not in {"left", "right"}:
+            return
         previous = self.active_channel.currentText()
         if previous:
             self.last_cursor_channel_by_group[self.waveform_plot.cursor_axis_group] = previous
@@ -772,7 +849,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _sync_cursor_axis_selector(self) -> None:
         self.cursor_axis_selector.blockSignals(True)
-        self.cursor_axis_selector.setCurrentText(self.waveform_plot.cursor_axis_group)
+        index = self.cursor_axis_selector.findData(self.waveform_plot.cursor_axis_group)
+        if index >= 0:
+            self.cursor_axis_selector.setCurrentIndex(index)
         self.cursor_axis_selector.blockSignals(False)
 
     def _update_cursor_panel(self, *_args: object) -> None:
@@ -963,7 +1042,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, "pick_measure_channel"):
             self.pick_measure_channel.setChecked(False)
         self.plot_tabs.setCurrentWidget(self.waveform_plot)
-        self.statusBar().showMessage(f"Click a waveform trace to select operand {operand.upper()}")
+        self.statusBar().showMessage(self.tr("Click a waveform trace to select operand {operand}").format(operand=operand.upper()))
 
     def _start_measure_pick(self, checked: bool) -> None:
         if not checked:
@@ -975,7 +1054,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pick_operand_b.setChecked(False)
         self.pick_measure_channel.setChecked(True)
         self.plot_tabs.setCurrentWidget(self.waveform_plot)
-        self.statusBar().showMessage("Click a waveform trace to select the measurement waveform")
+        self.statusBar().showMessage(self.tr("Click a waveform trace to select the measurement waveform"))
 
     def _clear_operand_pick(self) -> None:
         self.pending_waveform_pick = None
@@ -990,7 +1069,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.pending_waveform_pick == "measure":
             self.measure_channel.setCurrentText(channel_name)
             self._clear_operand_pick()
-            self.statusBar().showMessage(f"Measurement waveform: {channel_name}")
+            self.statusBar().showMessage(self.tr("Measurement waveform: {name}").format(name=channel_name))
             return
         if self.pending_waveform_pick == "math_a":
             self.math_operand_a.setCurrentText(channel_name)
@@ -999,11 +1078,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.math_operand_b.setCurrentText(channel_name)
             operand = "B"
         self._clear_operand_pick()
-        self.statusBar().showMessage(f"Operand {operand}: {channel_name}")
+        self.statusBar().showMessage(self.tr("Operand {operand}: {name}").format(operand=operand, name=channel_name))
 
     def _add_math_output(self) -> None:
         if self.data is None:
-            QtWidgets.QMessageBox.information(self, "Math", "Load a CSV file before creating calculated traces.")
+            QtWidgets.QMessageBox.information(self, self.tr("Math"), self.tr("Load a CSV file before creating calculated traces."))
             return
         function_id = self.math_function.currentData()
         function = MATH_FUNCTION_BY_ID.get(function_id)
@@ -1015,21 +1094,21 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self._add_calculated_trace()
         except Exception as exc:  # noqa: BLE001 - user-facing calculation failure.
-            QtWidgets.QMessageBox.warning(self, "Math failed", str(exc))
+            QtWidgets.QMessageBox.warning(self, self.tr("Math failed"), str(exc))
 
     def _add_calculated_trace(self) -> None:
         if self.data is None:
             return
         name = self.math_result_name.text().strip()
         if not name:
-            raise ValueError("Calculated trace name cannot be empty")
+            raise ValueError(self.tr("Calculated trace name cannot be empty"))
         if name in {channel.name for channel in self.data.channels}:
-            raise ValueError(f"A trace named {name!r} already exists")
+            raise ValueError(self.tr("A trace named {name!r} already exists").format(name=name))
         function_id = self.math_function.currentData()
         operand_a = self._channel_by_name(self.math_operand_a.currentText())
         operand_b = self._channel_by_name(self.math_operand_b.currentText()) if MATH_FUNCTION_BY_ID[function_id].arity == 2 else None
         if operand_a is None:
-            raise ValueError("Select operand A")
+            raise ValueError(self.tr("Select operand A"))
         channel = create_calculated_channel(
             function_id=function_id,
             operand_a=operand_a,
@@ -1040,17 +1119,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.calculated_channels.append(channel)
         self._replace_active_data(select={channel.name})
         self._sync_math_outputs()
-        self.statusBar().showMessage(f"Added calculated trace: {channel.name}")
+        self.statusBar().showMessage(self.tr("Added calculated trace: {name}").format(name=channel.name))
 
     def _add_fft_spectrum(self) -> None:
         if self.data is None:
             return
         name = self.math_result_name.text().strip()
         if not name:
-            raise ValueError("Spectrum name cannot be empty")
+            raise ValueError(self.tr("Spectrum name cannot be empty"))
         operand_a = self._channel_by_name(self.math_operand_a.currentText())
         if operand_a is None:
-            raise ValueError("Select operand A")
+            raise ValueError(self.tr("Select operand A"))
         spectrum = create_fft_spectrum(
             channel=operand_a,
             time=self.data.time,
@@ -1068,7 +1147,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if matching:
             self.math_outputs.setCurrentItem(matching[0])
         self.statusBar().showMessage(
-            f"Updated spectrum: {name}, {spectrum.window_id} window, {spectrum.time_range[0]:.8g} to {spectrum.time_range[1]:.8g}"
+            self.tr("Updated spectrum: {name}, {window} window, {start:.8g} to {end:.8g}").format(
+                name=name,
+                window=spectrum.window_id,
+                start=spectrum.time_range[0],
+                end=spectrum.time_range[1],
+            )
         )
 
     def _update_fft_spectrum(self) -> None:
@@ -1082,8 +1166,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if source_channel is None:
             QtWidgets.QMessageBox.warning(
                 self,
-                "Math failed",
-                f"Source trace {selected.source_channel!r} is no longer available.",
+                self.tr("Math failed"),
+                self.tr("Source trace {name!r} is no longer available.").format(name=selected.source_channel),
             )
             return
         try:
@@ -1097,13 +1181,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 zero_pad=self.fft_zero_pad.currentData(),
             )
         except Exception as exc:  # noqa: BLE001 - user-facing calculation failure.
-            QtWidgets.QMessageBox.warning(self, "Math failed", str(exc))
+            QtWidgets.QMessageBox.warning(self, self.tr("Math failed"), str(exc))
             return
         self.spectra[selected.name] = spectrum
         self.spectrum_plot.set_spectrum(spectrum)
         self._set_frequency_inputs(spectrum.frequency_range)
         self.statusBar().showMessage(
-            f"Updated spectrum: {spectrum.name}, {spectrum.window_id} window, {spectrum.time_range[0]:.8g} to {spectrum.time_range[1]:.8g}"
+            self.tr("Updated spectrum: {name}, {window} window, {start:.8g} to {end:.8g}").format(
+                name=spectrum.name,
+                window=spectrum.window_id,
+                start=spectrum.time_range[0],
+                end=spectrum.time_range[1],
+            )
         )
 
     def _remove_math_output(self) -> None:
@@ -1116,12 +1205,12 @@ class MainWindow(QtWidgets.QMainWindow):
         removed_spectrum = self.spectra.pop(name, None)
         if len(self.calculated_channels) != original_channel_count:
             self._replace_active_data(select=set())
-            self.statusBar().showMessage(f"Removed calculated trace: {name}")
+            self.statusBar().showMessage(self.tr("Removed calculated trace: {name}").format(name=name))
         if removed_spectrum is not None:
             self.spectrum_plot.clear()
             self.frequency_min.clear()
             self.frequency_max.clear()
-            self.statusBar().showMessage(f"Removed spectrum: {name}")
+            self.statusBar().showMessage(self.tr("Removed spectrum: {name}").format(name=name))
         self._sync_math_outputs()
 
     def _apply_frequency_range(self) -> None:
@@ -1131,7 +1220,7 @@ class MainWindow(QtWidgets.QMainWindow):
         low = _parse_float_text(self.frequency_min.text())
         high = _parse_float_text(self.frequency_max.text())
         if low is None or high is None:
-            QtWidgets.QMessageBox.warning(self, "Spectrum Range", "Enter numeric frequency bounds.")
+            QtWidgets.QMessageBox.warning(self, self.tr("Spectrum Range"), self.tr("Enter numeric frequency bounds."))
             return
         self.spectrum_plot.set_frequency_range((low, high))
         self.spectra[spectrum.name] = SpectrumData(
@@ -1362,27 +1451,29 @@ def _guess_channel_unit(name: str) -> str | None:
 
 def _time_column_validation(values: np.ndarray | None) -> tuple[bool, str]:
     if values is None:
-        return False, "Select a time column."
+        return False, _viewer_tr("Select a time column.")
     if values.size < 2:
-        return False, "Time column needs at least two samples."
+        return False, _viewer_tr("Time column needs at least two samples.")
     if not np.isfinite(values).all():
-        return False, "Time column contains non-finite values."
+        return False, _viewer_tr("Time column contains non-finite values.")
     diffs = np.diff(values.astype(float))
     if not np.all(diffs > 0):
-        return False, "Time column must be strictly increasing."
+        return False, _viewer_tr("Time column must be strictly increasing.")
     spacing = float(np.median(diffs))
     tolerance = max(abs(spacing) * 1e-4, 1e-15)
     max_variation = float(np.max(np.abs(diffs - spacing)))
     if max_variation > tolerance:
         return (
             True,
-            f"Increasing time column; nominal spacing: {spacing:.8g} s/pt "
-            f"(max step variation {max_variation:.3g}). FFT uses median spacing.",
+            _viewer_tr("Increasing time column; nominal spacing: {spacing:.8g} s/pt (max step variation {variation:.3g}). FFT uses median spacing.").format(
+                spacing=spacing,
+                variation=max_variation,
+            ),
         )
-    return True, f"Uniform spacing: {spacing:.8g} s/pt."
+    return True, _viewer_tr("Uniform spacing: {spacing:.8g} s/pt.").format(spacing=spacing)
 
 
-class AxisSetupDialog(QtWidgets.QDialog):
+class WaveformSetupDialog(QtWidgets.QDialog):
     GROUP_COLUMN = 1
     UNIT_COLUMN = 2
     Y_MIN_COLUMN = 3
@@ -1396,7 +1487,7 @@ class AxisSetupDialog(QtWidgets.QDialog):
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Waveform Setup")
+        self.setWindowTitle(self.tr("Waveform Setup"))
         self.resize(760, 560)
         self.data = data
         self.channels = data.channels
@@ -1406,30 +1497,30 @@ class AxisSetupDialog(QtWidgets.QDialog):
         }
         self.group_defaults = group_defaults
 
-        time_box = QtWidgets.QGroupBox("Time Base")
+        time_box = QtWidgets.QGroupBox(self.tr("Time Base"))
         time_layout = QtWidgets.QGridLayout(time_box)
         time_layout.setContentsMargins(8, 8, 8, 8)
         self.timebase_mode = QtWidgets.QComboBox()
-        self.timebase_mode.addItem("Time column", "column")
-        self.timebase_mode.addItem("Sample rate (Sa/s)", "sample_rate")
-        self.timebase_mode.addItem("Sample interval (s/pt)", "time_step")
-        self.timebase_mode.addItem("Sample index", "sample_index")
+        self.timebase_mode.addItem(self.tr("Time column"), "column")
+        self.timebase_mode.addItem(self.tr("Sample rate (Sa/s)"), "sample_rate")
+        self.timebase_mode.addItem(self.tr("Sample interval (s/pt)"), "time_step")
+        self.timebase_mode.addItem(self.tr("Sample index"), "sample_index")
         self.timebase_column = QtWidgets.QComboBox()
         self.timebase_column.addItems(list(self.time_candidates))
         self.timebase_value = QtWidgets.QLineEdit()
         self.timebase_status = QtWidgets.QLabel()
         self.timebase_status.setWordWrap(True)
-        time_layout.addWidget(QtWidgets.QLabel("Mode"), 0, 0)
+        time_layout.addWidget(QtWidgets.QLabel(self.tr("Mode")), 0, 0)
         time_layout.addWidget(self.timebase_mode, 0, 1)
-        time_layout.addWidget(QtWidgets.QLabel("Column"), 1, 0)
+        time_layout.addWidget(QtWidgets.QLabel(self.tr("Column")), 1, 0)
         time_layout.addWidget(self.timebase_column, 1, 1)
-        time_layout.addWidget(QtWidgets.QLabel("Value"), 2, 0)
+        time_layout.addWidget(QtWidgets.QLabel(self.tr("Value")), 2, 0)
         time_layout.addWidget(self.timebase_value, 2, 1)
         time_layout.addWidget(self.timebase_status, 3, 0, 1, 2)
         time_layout.setColumnStretch(1, 1)
 
         self.table = QtWidgets.QTableWidget(len(self.channels), 5)
-        self.table.setHorizontalHeaderLabels(["Waveform", "Axis", "Unit", "Y min", "Y max"])
+        self.table.setHorizontalHeaderLabels([self.tr("Waveform"), self.tr("Axis"), self.tr("Unit"), self.tr("Y min"), self.tr("Y max")])
         self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
@@ -1443,8 +1534,12 @@ class AxisSetupDialog(QtWidgets.QDialog):
             self.table.setItem(row, 0, name_item)
 
             group_combo = QtWidgets.QComboBox()
-            group_combo.addItems(["left", "right", "disabled"])
-            group_combo.setCurrentText(settings.group)
+            group_combo.addItem(self.tr("left"), "left")
+            group_combo.addItem(self.tr("right"), "right")
+            group_combo.addItem(self.tr("disabled"), "disabled")
+            index = group_combo.findData(settings.group)
+            if index >= 0:
+                group_combo.setCurrentIndex(index)
             group_combo.currentTextChanged.connect(lambda _value, row=row: self._apply_default_range(row))
             self.table.setCellWidget(row, self.GROUP_COLUMN, group_combo)
 
@@ -1520,13 +1615,13 @@ class AxisSetupDialog(QtWidgets.QDialog):
         elif kind == "sample_rate":
             value = _parse_float_text(self.timebase_value.text())
             valid = value is not None and value > 0
-            status = "Generated time from sample rate." if valid else "Sample rate must be greater than zero."
+            status = self.tr("Generated time from sample rate.") if valid else self.tr("Sample rate must be greater than zero.")
         elif kind == "time_step":
             value = _parse_float_text(self.timebase_value.text())
             valid = value is not None and value > 0
-            status = "Generated time from sample interval." if valid else "Sample interval must be greater than zero."
+            status = self.tr("Generated time from sample interval.") if valid else self.tr("Sample interval must be greater than zero.")
         else:
-            status = "Generated sample-index time base."
+            status = self.tr("Generated sample-index time base.")
         self.timebase_status.setText(status)
         ok_button = self.buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
@@ -1558,8 +1653,11 @@ class AxisSetupDialog(QtWidgets.QDialog):
     def _group_at(self, row: int) -> str:
         widget = self.table.cellWidget(row, self.GROUP_COLUMN)
         if isinstance(widget, QtWidgets.QComboBox):
-            return widget.currentText()
+            return widget.currentData()
         return "left"
+
+
+AxisSetupDialog = WaveformSetupDialog
 
 
 def _parse_float_item(item: QtWidgets.QTableWidgetItem | None) -> float | None:

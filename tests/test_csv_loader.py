@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
 import pandas as pd
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from csv_loader import excel_sheet_names, load_csv_waveform, load_waveform
+from PySide6 import QtWidgets
 
 
 def write_csv(path: Path, content: str) -> Path:
@@ -90,6 +95,80 @@ def test_main_imports_with_windows_python_312_import_order() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "ok" in result.stdout
+
+
+def test_language_argument_is_parsed() -> None:
+    from main import parse_args
+
+    args = parse_args(["--language", "zh_CN", "wave.csv"])
+
+    assert args.language == "zh_CN"
+    assert args.csv == "wave.csv"
+
+
+def test_missing_translation_falls_back_to_english() -> None:
+    from localization import install_translator
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    assert install_translator(app, "zz_ZZ") is None
+
+
+def test_default_translation_uses_system_locale_in_subprocess() -> None:
+    code = (
+        "import os; os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen'); "
+        "from PySide6 import QtWidgets; "
+        "import localization; "
+        "localization.system_locale_name = lambda: 'zh_CN'; "
+        "app = QtWidgets.QApplication([]); "
+        "print(localization.install_translator(app)); "
+        "print(localization.install_translator(app, 'system'))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["zh_CN", "zh_CN"]
+
+
+def test_chinese_and_japanese_translations_load_in_subprocess() -> None:
+    code = (
+        "import os; os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen'); "
+        "from PySide6 import QtWidgets; "
+        "from localization import install_translator; "
+        "app = QtWidgets.QApplication([]); "
+        "print(install_translator(app, 'zh_CN')); "
+        "print(install_translator(app, 'ja_JP'))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["zh_CN", "ja_JP"]
+
+
+def test_translation_catalogs_contain_utf8_text_not_question_marks() -> None:
+    expected = {
+        "translations/cswave_zh_CN.ts": {"Channels": "通道", "Open Waveform": "打开波形"},
+        "translations/cswave_ja_JP.ts": {"Channels": "チャンネル", "Open Waveform": "波形を開く"},
+    }
+    for path, samples in expected.items():
+        root = ET.parse(path).getroot()
+        translations = {
+            message.findtext("source"): message.findtext("translation")
+            for message in root.findall(".//message")
+        }
+        for source, translated in samples.items():
+            assert translations[source] == translated
+            assert set(translated) != {"?"}
 
 
 def test_loads_excel_waveform_sheet(tmp_path: Path) -> None:

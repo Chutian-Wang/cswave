@@ -41,6 +41,10 @@ LEFT_AXIS_COLOR = "#ffd400"
 RIGHT_AXIS_COLOR = "#00d7ff"
 
 
+def _tr(text: str) -> str:
+    return QtCore.QCoreApplication.translate("plot_widgets", text)
+
+
 @dataclass
 class AxisGroupSettings:
     group: str
@@ -919,13 +923,13 @@ class WaveformPlot(QtWidgets.QWidget):
         return self.focused_channel is not None
 
     def _legend_label(self, channel_name: str) -> str:
-        return f"{channel_name} ({self._channel_group(channel_name)} axis)"
+        return _tr("{name} ({group} axis)").format(name=channel_name, group=self._channel_group(channel_name))
 
     def _update_axis_labels(self) -> None:
         left_unit = self._group_unit("left")
         right_unit = self._group_unit("right")
-        self.plot_item.setLabel("left", f"Left axis{f' ({left_unit})' if left_unit else ''}")
-        self.plot_item.setLabel("right", f"Right axis{f' ({right_unit})' if right_unit else ''}")
+        self.plot_item.setLabel("left", _tr("Left axis{unit}").format(unit=f" ({left_unit})" if left_unit else ""))
+        self.plot_item.setLabel("right", _tr("Right axis{unit}").format(unit=f" ({right_unit})" if right_unit else ""))
         self.preview_item.setLabel("left", left_unit)
         self.preview_item.setLabel("right", right_unit)
 
@@ -1205,8 +1209,8 @@ class SpectrumPlot(QtWidgets.QWidget):
         self.plot = pg.PlotWidget(viewBox=self.view_box)
         self.plot.setBackground(PLOT_BACKGROUND_COLOR)
         self.plot.showGrid(x=True, y=True, alpha=0.25)
-        self.plot.setLabel("bottom", "Frequency", units="Hz")
-        self.plot.setLabel("left", "Magnitude", units="dB")
+        self.plot.setLabel("bottom", _tr("Frequency"), units="Hz")
+        self.plot.setLabel("left", _tr("Magnitude"), units="dB")
         self.plot.setMouseEnabled(x=True, y=True)
         self.curve = pg.PlotDataItem(pen=pg.mkPen("#ffd400", width=CURVE_WIDTH))
         self.plot.addItem(self.curve)
@@ -1292,7 +1296,7 @@ class SpectrumPlot(QtWidgets.QWidget):
         if abs(point.x() - frequency) > tolerance_x or abs(point.y() - magnitude) > tolerance_y:
             self.hover_label.hide()
             return
-        self.hover_label.setText(f"f={frequency:.8g} Hz\nMag={magnitude:.8g} dB")
+        self.hover_label.setText(_tr("f={frequency:.8g} Hz\nMag={magnitude:.8g} dB").format(frequency=frequency, magnitude=magnitude))
         self.hover_label.setPos(frequency, magnitude)
         self.hover_label.show()
 

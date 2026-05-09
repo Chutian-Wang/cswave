@@ -142,6 +142,32 @@ def test_spectrum_range_only_visible_for_fft(tmp_path: Path) -> None:
     assert window.spectrum_range_box.isHidden() is False
 
 
+def test_english_fallback_labels_and_stable_combo_ids(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    assert window.side_tabs.tabText(0) == "Channels"
+    assert window.side_tabs.tabText(2) == "Math"
+    assert window.plot_tabs.tabText(0) == "Waveforms"
+    assert window.math_function.currentText()
+    assert window.measure_range.itemText(0) == "Full waveform"
+    assert window.axis_group_selector.itemData(0) == "left"
+    assert window.axis_group_selector.itemData(1) == "right"
+
+    dialog = AxisSetupDialog(
+        window.data,
+        window.waveform_plot.axis_settings,
+        window.waveform_plot.group_defaults(),
+    )
+    assert dialog.windowTitle() == "Waveform Setup"
+    group_combo = dialog.table.cellWidget(0, dialog.GROUP_COLUMN)
+    assert group_combo.itemData(0) == "left"
+    assert group_combo.itemData(1) == "right"
+    assert group_combo.itemData(2) == "disabled"
+
+
 def test_load_file_schedules_waveform_setup(tmp_path: Path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app
