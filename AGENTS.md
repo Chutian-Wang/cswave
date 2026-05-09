@@ -97,7 +97,7 @@ Use this section to avoid rereading the whole repo for common changes.
 
 - `Open Waveform` supports `.csv`, `.xls`, `.xlsx`, and `.xlsm`.
 - Excel files with multiple sheets prompt the user to choose the sheet containing waveforms.
-- Loading through the `Open Waveform` menu-bar action or startup argument opens `Waveform Setup` automatically (`show_setup=True`); programmatic/test `load_file()` calls are non-modal by default.
+- Loading through `File` > `Open Waveform` or a startup argument opens `Waveform Setup` automatically (`show_setup=True`); programmatic/test `load_file()` calls are non-modal by default.
 - `Waveform Setup` controls both X-axis timebase and Y-axis grouping:
   - `Time column`: selected numeric column must be finite, strictly increasing, and uniformly spaced; selected column is removed from plotted signals.
   - `Sample rate (Sa/s)`: generated time is `sample_index / sample_rate`; all numeric columns, including detected time, are normal signals.
@@ -155,9 +155,9 @@ Use this section to avoid rereading the whole repo for common changes.
 
 The native Qt menu bar is organized as:
 
-- `Open Waveform` top-level action
+- File: `Open Waveform`
 - View: `Reset View`, `Waveform Setup...`
-- Navigate: `Y group`, `Zoom` axis selector with adjacent `+` / `-`
+- Navigate: `Y group`, `Zoom` axis selection, `Zoom In`, `Zoom Out`
 - Display: `Renderer` (`CPU` / `OpenGL`), `Language`, `Force dark`
 
 Shortcuts:

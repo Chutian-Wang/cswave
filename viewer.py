@@ -528,14 +528,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_actions(self) -> None:
         menu_bar = self.menuBar()
 
+        file_menu = menu_bar.addMenu(self.tr("File"))
+        file_menu.setToolTipsVisible(True)
         open_action = QtGui.QAction(self.tr("Open Waveform"), self)
         open_action.setShortcut(QtGui.QKeySequence.Open)
         open_action.triggered.connect(self._open_dialog)
-        menu_bar.addAction(open_action)
+        file_menu.addAction(open_action)
 
         view_menu = menu_bar.addMenu(self.tr("View"))
         navigate_menu = menu_bar.addMenu(self.tr("Navigate"))
         display_menu = menu_bar.addMenu(self.tr("Display"))
+        view_menu.setToolTipsVisible(True)
+        navigate_menu.setToolTipsVisible(True)
+        display_menu.setToolTipsVisible(True)
 
         reset_action = QtGui.QAction(self.tr("Reset View"), self)
         reset_action.triggered.connect(self._reset_active_view)
@@ -546,44 +551,86 @@ class MainWindow(QtWidgets.QMainWindow):
         waveform_setup_action.triggered.connect(self._open_waveform_setup)
         view_menu.addAction(waveform_setup_action)
 
-        self.axis_group_selector = QtWidgets.QComboBox()
-        self.axis_group_selector.addItem(self.tr("Left"), "left")
-        self.axis_group_selector.addItem(self.tr("Right"), "right")
-        self.axis_group_selector.setToolTip(self.tr("Active Y axis group for Y pan and zoom"))
-        self.axis_group_selector.setMinimumContentsLength(5)
+        y_group_menu = navigate_menu.addMenu(self.tr("Y group"))
+        y_group_menu.setToolTipsVisible(True)
+        self.axis_group_actions: dict[str, QtGui.QAction] = {}
+        self.axis_group_action_group = QtGui.QActionGroup(self)
+        self.axis_group_action_group.setExclusive(True)
+        for label, group_id in ((self.tr("Left"), "left"), (self.tr("Right"), "right")):
+            action = y_group_menu.addAction(label)
+            action.setCheckable(True)
+            action.setData(group_id)
+            action.setToolTip(self.tr("Active Y axis group for Y pan and zoom"))
+            action.triggered.connect(lambda checked=False, selected=group_id: self._axis_group_changed(selected))
+            self.axis_group_action_group.addAction(action)
+            self.axis_group_actions[group_id] = action
         self._sync_axis_group_selector()
-        self.axis_group_selector.currentIndexChanged.connect(self._axis_group_changed)
-        navigate_menu.addAction(_menu_labeled_widget(self.tr("Y group"), self.axis_group_selector, navigate_menu))
 
-        self.zoom_axis_selector = QtWidgets.QComboBox()
-        self.zoom_axis_selector.addItems(["X", "Y"])
-        self.zoom_axis_selector.setToolTip(self.tr("Axis used by zoom commands"))
-        self.zoom_axis_selector.setMinimumContentsLength(1)
-        navigate_menu.addAction(_menu_zoom_widget(self, self.zoom_axis_selector, navigate_menu))
+        zoom_menu = navigate_menu.addMenu(self.tr("Zoom"))
+        zoom_menu.setToolTipsVisible(True)
+        self.zoom_axis = "x"
+        self.zoom_axis_actions: dict[str, QtGui.QAction] = {}
+        self.zoom_axis_action_group = QtGui.QActionGroup(self)
+        self.zoom_axis_action_group.setExclusive(True)
+        for axis in ("X", "Y"):
+            action = zoom_menu.addAction(axis)
+            action.setCheckable(True)
+            action.setData(axis.lower())
+            action.setToolTip(self.tr("Axis used by zoom commands"))
+            action.triggered.connect(lambda checked=False, selected=axis.lower(): self._set_zoom_axis(selected))
+            self.zoom_axis_action_group.addAction(action)
+            self.zoom_axis_actions[axis.lower()] = action
+        self.zoom_axis_actions[self.zoom_axis].setChecked(True)
+        zoom_menu.addSeparator()
+        zoom_in_action = zoom_menu.addAction(self.tr("Zoom In"))
+        zoom_in_action.setShortcut(QtGui.QKeySequence.ZoomIn)
+        zoom_in_action.setToolTip(self.tr("Zoom in on the selected axis"))
+        zoom_in_action.triggered.connect(lambda: self.waveform_plot.zoom_in(self._selected_zoom_axis()))
+        zoom_out_action = zoom_menu.addAction(self.tr("Zoom Out"))
+        zoom_out_action.setShortcut(QtGui.QKeySequence.ZoomOut)
+        zoom_out_action.setToolTip(self.tr("Zoom out on the selected axis"))
+        zoom_out_action.triggered.connect(lambda: self.waveform_plot.zoom_out(self._selected_zoom_axis()))
 
-        self.renderer_selector = QtWidgets.QComboBox()
-        self.renderer_selector.addItem("CPU", "cpu")
-        self.renderer_selector.addItem("OpenGL", "opengl")
-        self.renderer_selector.setToolTip(self.tr("Rendering backend for waveform drawing"))
-        self.renderer_selector.setMinimumContentsLength(6)
+        renderer_menu = display_menu.addMenu(self.tr("Renderer"))
+        renderer_menu.setToolTipsVisible(True)
+        self.renderer_actions: dict[str, QtGui.QAction] = {}
+        self.renderer_action_group = QtGui.QActionGroup(self)
+        self.renderer_action_group.setExclusive(True)
+        for label, mode in (("CPU", "cpu"), ("OpenGL", "opengl")):
+            action = renderer_menu.addAction(label)
+            action.setCheckable(True)
+            action.setData(mode)
+            action.setToolTip(self.tr("Rendering backend for waveform drawing"))
+            action.triggered.connect(lambda checked=False, selected=mode: self._renderer_changed(selected))
+            self.renderer_action_group.addAction(action)
+            self.renderer_actions[mode] = action
         self._sync_renderer_selector()
-        self.renderer_selector.currentIndexChanged.connect(self._renderer_changed)
-        display_menu.addAction(_menu_labeled_widget(self.tr("Renderer"), self.renderer_selector, display_menu))
-        self.language_selector = QtWidgets.QComboBox()
-        self.language_selector.addItem("System", "system")
-        self.language_selector.addItem("English", "en")
-        self.language_selector.addItem("\u4e2d\u6587", "zh_CN")
-        self.language_selector.addItem("\u65e5\u672c\u8a9e", "ja_JP")
-        self.language_selector.setToolTip(self.tr("Change the startup language and restart the app"))
-        self.language_selector.setMinimumContentsLength(8)
+
+        language_menu = display_menu.addMenu(self.tr("Language"))
+        language_menu.setToolTipsVisible(True)
+        language_menu.setToolTip(self.tr("Change the startup language and restart the app"))
+        self.language_actions: dict[str, QtGui.QAction] = {}
+        self.language_action_group = QtGui.QActionGroup(self)
+        self.language_action_group.setExclusive(True)
+        for label, language in (
+            ("System", "system"),
+            ("English", "en"),
+            ("\u4e2d\u6587", "zh_CN"),
+            ("\u65e5\u672c\u8a9e", "ja_JP"),
+        ):
+            action = language_menu.addAction(label)
+            action.setCheckable(True)
+            action.setData(language)
+            action.setToolTip(self.tr("Change the startup language and restart the app"))
+            action.triggered.connect(lambda checked=False, selected=language: self._language_changed(selected))
+            self.language_action_group.addAction(action)
+            self.language_actions[language] = action
         self._sync_language_selector()
-        self.language_selector.currentIndexChanged.connect(self._language_changed)
-        display_menu.addAction(_menu_labeled_widget(self.tr("Language"), self.language_selector, display_menu))
         display_menu.addSeparator()
-        self.force_dark_mode = QtWidgets.QCheckBox(self.tr("Force dark"))
-        self.force_dark_mode.setToolTip(self.tr("Force dark mode display (may affect how the app looks)"))
-        self.force_dark_mode.toggled.connect(self._force_dark_mode_changed)
-        display_menu.addAction(_menu_widget_action(self.force_dark_mode, display_menu))
+        self.force_dark_mode_action = display_menu.addAction(self.tr("Force dark"))
+        self.force_dark_mode_action.setCheckable(True)
+        self.force_dark_mode_action.setToolTip(self.tr("Force dark mode display (may affect how the app looks)"))
+        self.force_dark_mode_action.toggled.connect(self._force_dark_mode_changed)
 
     def _open_dialog(self) -> None:
         path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
@@ -616,7 +663,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return sheet if accepted and sheet else None
 
     def _selected_zoom_axis(self) -> str:
-        return self.zoom_axis_selector.currentText().lower()
+        return self.zoom_axis
 
     def _reset_active_view(self) -> None:
         if self.plot_tabs.currentWidget() is self.spectrum_plot:
@@ -655,44 +702,51 @@ class MainWindow(QtWidgets.QMainWindow):
         self.side_panel_restore_tab.move(x, y)
 
     def _sync_axis_group_selector(self, *_args: object) -> None:
-        current_index = self.axis_group_selector.findData(self.waveform_plot.active_y_group)
-        if current_index < 0:
+        if not hasattr(self, "axis_group_actions"):
             return
-        self.axis_group_selector.blockSignals(True)
-        self.axis_group_selector.setCurrentIndex(current_index)
-        self.axis_group_selector.blockSignals(False)
+        for group, action in self.axis_group_actions.items():
+            action.blockSignals(True)
+            action.setChecked(group == self.waveform_plot.active_y_group)
+            action.blockSignals(False)
 
-    def _axis_group_changed(self) -> None:
-        group = self.axis_group_selector.currentData()
+    def _axis_group_changed(self, group: str) -> None:
         if group not in {"left", "right"}:
             return
         self.waveform_plot.set_active_y_group(group)
         axis = self.tr("Left") if self.waveform_plot.active_y_group == "left" else self.tr("Right")
         self.statusBar().showMessage(self.tr("Y control group: {axis} axis").format(axis=axis))
 
-    def _sync_renderer_selector(self) -> None:
-        opengl_index = self.renderer_selector.findData("opengl")
-        if opengl_index >= 0:
-            item = self.renderer_selector.model().item(opengl_index)
-            if item is not None:
-                item.setEnabled(self.waveform_plot.opengl_available)
-            self.renderer_selector.setItemData(
-                opengl_index,
-                self.tr("Use OpenGL rendering") if self.waveform_plot.opengl_available else self.tr("OpenGL is not available"),
-                QtCore.Qt.ItemDataRole.ToolTipRole,
-            )
-        current_index = self.renderer_selector.findData(self.waveform_plot.renderer_mode)
-        if current_index >= 0:
-            self.renderer_selector.blockSignals(True)
-            self.renderer_selector.setCurrentIndex(current_index)
-            self.renderer_selector.blockSignals(False)
+    def _set_zoom_axis(self, axis: str) -> None:
+        if axis not in {"x", "y"}:
+            return
+        self.zoom_axis = axis
+        if not hasattr(self, "zoom_axis_actions"):
+            return
+        for action_axis, action in self.zoom_axis_actions.items():
+            action.blockSignals(True)
+            action.setChecked(action_axis == axis)
+            action.blockSignals(False)
 
-    def _renderer_changed(self) -> None:
-        mode = self.renderer_selector.currentData()
+    def _sync_renderer_selector(self) -> None:
+        if not hasattr(self, "renderer_actions"):
+            return
+        opengl_action = self.renderer_actions.get("opengl")
+        if opengl_action is not None:
+            opengl_action.setEnabled(self.waveform_plot.opengl_available)
+            opengl_action.setToolTip(
+                self.tr("Use OpenGL rendering") if self.waveform_plot.opengl_available else self.tr("OpenGL is not available")
+            )
+        for mode, action in self.renderer_actions.items():
+            action.blockSignals(True)
+            action.setChecked(mode == self.waveform_plot.renderer_mode)
+            action.blockSignals(False)
+
+    def _renderer_changed(self, mode: str) -> None:
         if mode not in {"cpu", "opengl"}:
             return
         if self.waveform_plot.set_renderer_mode(mode):
-            self.statusBar().showMessage(self.tr("Renderer: {renderer}").format(renderer=self.renderer_selector.currentText()))
+            renderer = self.renderer_actions.get(mode).text() if mode in self.renderer_actions else mode
+            self.statusBar().showMessage(self.tr("Renderer: {renderer}").format(renderer=renderer))
             self._sync_renderer_selector()
             return
         self._sync_renderer_selector()
@@ -708,17 +762,15 @@ class MainWindow(QtWidgets.QMainWindow):
             apply_system_theme(app)
 
     def _sync_language_selector(self) -> None:
-        if not hasattr(self, "language_selector"):
+        if not hasattr(self, "language_actions"):
             return
-        index = self.language_selector.findData(self.startup_language)
-        if index < 0:
-            index = self.language_selector.findData("system")
-        self.language_selector.blockSignals(True)
-        self.language_selector.setCurrentIndex(max(index, 0))
-        self.language_selector.blockSignals(False)
+        language = self.startup_language if self.startup_language in self.language_actions else "system"
+        for action_language, action in self.language_actions.items():
+            action.blockSignals(True)
+            action.setChecked(action_language == language)
+            action.blockSignals(False)
 
-    def _language_changed(self) -> None:
-        language = self.language_selector.currentData()
+    def _language_changed(self, language: str) -> None:
         if language == self.startup_language:
             return
         answer = QtWidgets.QMessageBox.question(
@@ -1390,46 +1442,6 @@ class MainWindow(QtWidgets.QMainWindow):
         area.setWidgetResizable(True)
         area.setWidget(widget)
         return area
-
-
-def _menu_widget_action(widget: QtWidgets.QWidget, menu: QtWidgets.QMenu) -> QtWidgets.QWidgetAction:
-    action = QtWidgets.QWidgetAction(menu)
-    action.setDefaultWidget(widget)
-    return action
-
-
-def _menu_labeled_widget(label: str, widget: QtWidgets.QWidget, menu: QtWidgets.QMenu) -> QtWidgets.QWidgetAction:
-    row = QtWidgets.QWidget()
-    layout = QtWidgets.QHBoxLayout(row)
-    layout.setContentsMargins(10, 4, 10, 4)
-    layout.setSpacing(8)
-    text = QtWidgets.QLabel(label)
-    text.setMinimumWidth(72)
-    layout.addWidget(text)
-    layout.addWidget(widget, stretch=1)
-    return _menu_widget_action(row, menu)
-
-
-def _menu_zoom_widget(window: "MainWindow", selector: QtWidgets.QComboBox, menu: QtWidgets.QMenu) -> QtWidgets.QWidgetAction:
-    row = QtWidgets.QWidget()
-    layout = QtWidgets.QHBoxLayout(row)
-    layout.setContentsMargins(10, 4, 10, 4)
-    layout.setSpacing(6)
-    label = QtWidgets.QLabel(window.tr("Zoom"))
-    label.setMinimumWidth(72)
-    layout.addWidget(label)
-    layout.addWidget(selector, stretch=1)
-    zoom_out = QtWidgets.QToolButton()
-    zoom_out.setText("-")
-    zoom_out.setToolTip(window.tr("Zoom out on the selected axis"))
-    zoom_out.clicked.connect(lambda: window.waveform_plot.zoom_out(window._selected_zoom_axis()))
-    layout.addWidget(zoom_out)
-    zoom_in = QtWidgets.QToolButton()
-    zoom_in.setText("+")
-    zoom_in.setToolTip(window.tr("Zoom in on the selected axis"))
-    zoom_in.clicked.connect(lambda: window.waveform_plot.zoom_in(window._selected_zoom_axis()))
-    layout.addWidget(zoom_in)
-    return _menu_widget_action(row, menu)
 
 
 def _format_value(value: float | None) -> str:

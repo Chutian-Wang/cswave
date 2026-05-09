@@ -87,17 +87,17 @@
         <name>MainWindow</name>
         <message>
             <location filename="../viewer.py" line="401" />
-            <location filename="../viewer.py" line="550" />
-            <location filename="../viewer.py" line="670" />
-            <location filename="../viewer.py" line="761" />
+            <location filename="../viewer.py" line="559" />
+            <location filename="../viewer.py" line="716" />
+            <location filename="../viewer.py" line="813" />
             <source>Left</source>
             <translation>左</translation>
         </message>
         <message>
             <location filename="../viewer.py" line="402" />
-            <location filename="../viewer.py" line="551" />
-            <location filename="../viewer.py" line="670" />
-            <location filename="../viewer.py" line="761" />
+            <location filename="../viewer.py" line="559" />
+            <location filename="../viewer.py" line="716" />
+            <location filename="../viewer.py" line="813" />
             <source>Right</source>
             <translation>右</translation>
         </message>
@@ -123,7 +123,7 @@
         </message>
         <message>
             <location filename="../viewer.py" line="455" />
-            <location filename="../viewer.py" line="1126" />
+            <location filename="../viewer.py" line="1178" />
             <source>Math</source>
             <translation>数学</translation>
         </message>
@@ -178,263 +178,294 @@
             <translation>已加载 {name}{sheet}：{count} 个通道，时基：{time_source}。{ignored}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="531" />
-            <location filename="../viewer.py" line="591" />
+            <location filename="../viewer.py" line="533" />
+            <location filename="../viewer.py" line="638" />
             <source>Open Waveform</source>
             <translation>打开波形</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="536" />
+            <location filename="../viewer.py" line="538" />
             <source>View</source>
             <translation>视图</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="540" />
+            <location filename="../viewer.py" line="545" />
             <source>Reset View</source>
             <translation>重置视图</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="544" />
+            <location filename="../viewer.py" line="549" />
             <source>Waveform Setup...</source>
             <translation>波形设置...</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="545" />
+            <location filename="../viewer.py" line="550" />
             <source>Configure left/right axis grouping, units, and Y ranges</source>
             <translation>配置左右轴分组、单位和 Y 范围</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="537" />
+            <location filename="../viewer.py" line="539" />
             <source>Navigate</source>
             <translation>导航</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="556" />
+            <location filename="../viewer.py" line="554" />
             <source>Y group</source>
             <translation>Y 组</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="552" />
+            <location filename="../viewer.py" line="563" />
             <source>Active Y axis group for Y pan and zoom</source>
             <translation>用于 Y 平移和缩放的当前 Y 轴组</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="538" />
+            <location filename="../viewer.py" line="540" />
             <source>Display</source>
             <translation>显示</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="571" />
+            <location filename="../viewer.py" line="594" />
             <source>Renderer</source>
             <translation>渲染器</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="567" />
+            <location filename="../viewer.py" line="603" />
             <source>Rendering backend for waveform drawing</source>
             <translation>波形绘制的渲染后端</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="583" />
+            <location filename="../viewer.py" line="630" />
             <source>Force dark</source>
             <translation>强制深色</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="581" />
+            <location filename="../viewer.py" line="609" />
             <source>Language</source>
             <translation>语言</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="577" />
+            <location filename="../viewer.py" line="611" />
+            <location filename="../viewer.py" line="624" />
             <source>Change the startup language and restart the app</source>
             <translation>更改启动语言并重启应用</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="560" />
+            <location filename="../viewer.py" line="579" />
             <source>Axis used by zoom commands</source>
             <translation>缩放命令使用的轴</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="584" />
+            <location filename="../viewer.py" line="531" />
+            <source>File</source>
+            <translation>文件</translation>
+        </message>
+        <message>
+            <location filename="../viewer.py" line="569" />
+            <source>Zoom</source>
+            <translation>缩放</translation>
+        </message>
+        <message>
+            <location filename="../viewer.py" line="585" />
+            <source>Zoom In</source>
+            <translation>放大</translation>
+        </message>
+        <message>
+            <location filename="../viewer.py" line="587" />
+            <source>Zoom in on the selected axis</source>
+            <translation>放大所选轴</translation>
+        </message>
+        <message>
+            <location filename="../viewer.py" line="589" />
+            <source>Zoom Out</source>
+            <translation>缩小</translation>
+        </message>
+        <message>
+            <location filename="../viewer.py" line="591" />
+            <source>Zoom out on the selected axis</source>
+            <translation>缩小所选轴</translation>
+        </message>
+        <message>
+            <location filename="../viewer.py" line="632" />
             <source>Force dark mode display (may affect how the app looks)</source>
             <translation>强制深色模式显示（可能影响应用外观）</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="593" />
+            <location filename="../viewer.py" line="640" />
             <source>Waveform files (*.csv *.xls *.xlsx *.xlsm);;CSV files (*.csv);;Excel files (*.xls *.xlsx *.xlsm);;All files (*)</source>
             <translation>波形文件 (*.csv *.xls *.xlsx *.xlsm);;CSV 文件 (*.csv);;Excel 文件 (*.xls *.xlsx *.xlsm);;所有文件 (*)</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="600" />
+            <location filename="../viewer.py" line="647" />
             <source>Could not load waveform</source>
             <translation>无法加载波形</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="610" />
+            <location filename="../viewer.py" line="657" />
             <source>Select Waveform Sheet</source>
             <translation>选择波形工作表</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="611" />
+            <location filename="../viewer.py" line="658" />
             <source>Waveform sheet</source>
             <translation>波形工作表</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="671" />
-            <location filename="../viewer.py" line="762" />
+            <location filename="../viewer.py" line="717" />
+            <location filename="../viewer.py" line="814" />
             <source>Y control group: {axis} axis</source>
             <translation>Y 控制组：{axis}轴</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="681" />
+            <location filename="../viewer.py" line="737" />
             <source>Use OpenGL rendering</source>
             <translation>使用 OpenGL 渲染</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="681" />
+            <location filename="../viewer.py" line="737" />
             <source>OpenGL is not available</source>
             <translation>OpenGL 不可用</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="695" />
+            <location filename="../viewer.py" line="749" />
             <source>Renderer: {renderer}</source>
             <translation>渲染器：{renderer}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="699" />
+            <location filename="../viewer.py" line="753" />
             <source>Renderer unavailable</source>
             <translation>渲染器不可用</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="699" />
+            <location filename="../viewer.py" line="753" />
             <source>OpenGL rendering is not available on this system.</source>
             <translation>此系统上不可使用 OpenGL 渲染。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="726" />
+            <location filename="../viewer.py" line="778" />
             <source>Restart Required</source>
             <translation>需要重启</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="727" />
+            <location filename="../viewer.py" line="779" />
             <source>Restart now to apply the selected language?</source>
             <translation>现在重启以应用所选语言吗？</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="743" />
+            <location filename="../viewer.py" line="795" />
             <source>Restart Failed</source>
             <translation>重启失败</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="743" />
+            <location filename="../viewer.py" line="795" />
             <source>Could not restart the application.</source>
             <translation>无法重启应用程序。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="772" />
+            <location filename="../viewer.py" line="824" />
             <source>Waveform Setup</source>
             <translation>波形设置</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="772" />
+            <location filename="../viewer.py" line="824" />
             <source>Load a waveform file before configuring axes.</source>
             <translation>请先加载波形文件，再配置轴。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="816" />
+            <location filename="../viewer.py" line="868" />
             <source>Disabled in Waveform Setup</source>
             <translation>已在波形设置中禁用</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="817" />
+            <location filename="../viewer.py" line="869" />
             <source>Show or hide this enabled waveform</source>
             <translation>显示或隐藏此已启用波形</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1086" />
+            <location filename="../viewer.py" line="1138" />
             <source>Click a waveform trace to select operand {operand}</source>
             <translation>单击波形曲线以选择操作数 {operand}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1098" />
+            <location filename="../viewer.py" line="1150" />
             <source>Click a waveform trace to select the measurement waveform</source>
             <translation>单击波形曲线以选择测量波形</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1113" />
+            <location filename="../viewer.py" line="1165" />
             <source>Measurement waveform: {name}</source>
             <translation>测量波形：{name}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1122" />
+            <location filename="../viewer.py" line="1174" />
             <source>Operand {operand}: {name}</source>
             <translation>操作数 {operand}：{name}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1126" />
+            <location filename="../viewer.py" line="1178" />
             <source>Load a CSV file before creating calculated traces.</source>
             <translation>请先加载 CSV 文件，再创建计算曲线。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1138" />
-            <location filename="../viewer.py" line="1210" />
-            <location filename="../viewer.py" line="1225" />
+            <location filename="../viewer.py" line="1190" />
+            <location filename="../viewer.py" line="1262" />
+            <location filename="../viewer.py" line="1277" />
             <source>Math failed</source>
             <translation>数学运算失败</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1145" />
+            <location filename="../viewer.py" line="1197" />
             <source>Calculated trace name cannot be empty</source>
             <translation>计算曲线名称不能为空</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1147" />
+            <location filename="../viewer.py" line="1199" />
             <source>A trace named {name!r} already exists</source>
             <translation>名为 {name!r} 的曲线已存在</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1152" />
-            <location filename="../viewer.py" line="1173" />
+            <location filename="../viewer.py" line="1204" />
+            <location filename="../viewer.py" line="1225" />
             <source>Select operand A</source>
             <translation>请选择操作数 A</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1163" />
+            <location filename="../viewer.py" line="1215" />
             <source>Added calculated trace: {name}</source>
             <translation>已添加计算曲线：{name}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1170" />
+            <location filename="../viewer.py" line="1222" />
             <source>Spectrum name cannot be empty</source>
             <translation>频谱名称不能为空</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1191" />
-            <location filename="../viewer.py" line="1231" />
+            <location filename="../viewer.py" line="1243" />
+            <location filename="../viewer.py" line="1283" />
             <source>Updated spectrum: {name}, {window} window, {start:.8g} to {end:.8g}</source>
             <translation>已更新频谱：{name}，{window} 窗，{start:.8g} 至 {end:.8g}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1211" />
+            <location filename="../viewer.py" line="1263" />
             <source>Source trace {name!r} is no longer available.</source>
             <translation>源曲线 {name!r} 已不可用。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1249" />
+            <location filename="../viewer.py" line="1301" />
             <source>Removed calculated trace: {name}</source>
             <translation>已移除计算曲线：{name}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1254" />
+            <location filename="../viewer.py" line="1306" />
             <source>Removed spectrum: {name}</source>
             <translation>已移除频谱：{name}</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1264" />
+            <location filename="../viewer.py" line="1316" />
             <source>Spectrum Range</source>
             <translation>频谱范围</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1264" />
+            <location filename="../viewer.py" line="1316" />
             <source>Enter numeric frequency bounds.</source>
             <translation>请输入数值频率边界。</translation>
         </message>
@@ -634,132 +665,114 @@
     <context>
         <name>WaveformSetupDialog</name>
         <message>
-            <location filename="../viewer.py" line="1565" />
+            <location filename="../viewer.py" line="1577" />
             <source>Waveform Setup</source>
             <translation>波形设置</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1575" />
+            <location filename="../viewer.py" line="1587" />
             <source>Time Base</source>
             <translation>时基</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1579" />
+            <location filename="../viewer.py" line="1591" />
             <source>Time column</source>
             <translation>时间列</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1580" />
+            <location filename="../viewer.py" line="1592" />
             <source>Sample rate (Sa/s)</source>
             <translation>采样率 (Sa/s)</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1581" />
+            <location filename="../viewer.py" line="1593" />
             <source>Sample interval (s/pt)</source>
             <translation>采样间隔 (s/pt)</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1582" />
+            <location filename="../viewer.py" line="1594" />
             <source>Sample index</source>
             <translation>样本索引</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1588" />
+            <location filename="../viewer.py" line="1600" />
             <source>Mode</source>
             <translation>模式</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1590" />
+            <location filename="../viewer.py" line="1602" />
             <source>Column</source>
             <translation>列</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1592" />
+            <location filename="../viewer.py" line="1604" />
             <source>Value</source>
             <translation>值</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1598" />
+            <location filename="../viewer.py" line="1610" />
             <source>Waveform</source>
             <translation>波形</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1598" />
+            <location filename="../viewer.py" line="1610" />
             <source>Axis</source>
             <translation>轴</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1598" />
+            <location filename="../viewer.py" line="1610" />
             <source>Unit</source>
             <translation>单位</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1598" />
+            <location filename="../viewer.py" line="1610" />
             <source>Y min</source>
             <translation>Y 最小值</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1598" />
+            <location filename="../viewer.py" line="1610" />
             <source>Y max</source>
             <translation>Y 最大值</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1612" />
+            <location filename="../viewer.py" line="1624" />
             <source>left</source>
             <translation>左</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1613" />
+            <location filename="../viewer.py" line="1625" />
             <source>right</source>
             <translation>右</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1614" />
+            <location filename="../viewer.py" line="1626" />
             <source>disabled</source>
             <translation>禁用</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1693" />
+            <location filename="../viewer.py" line="1705" />
             <source>Generated time from sample rate.</source>
             <translation>已根据采样率生成时间。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1693" />
+            <location filename="../viewer.py" line="1705" />
             <source>Sample rate must be greater than zero.</source>
             <translation>采样率必须大于零。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1697" />
+            <location filename="../viewer.py" line="1709" />
             <source>Generated time from sample interval.</source>
             <translation>已根据采样间隔生成时间。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1697" />
+            <location filename="../viewer.py" line="1709" />
             <source>Sample interval must be greater than zero.</source>
             <translation>采样间隔必须大于零。</translation>
         </message>
         <message>
-            <location filename="../viewer.py" line="1699" />
+            <location filename="../viewer.py" line="1711" />
             <source>Generated sample-index time base.</source>
             <translation>已生成样本索引时基。</translation>
-        </message>
-    </context>
-    <context>
-        <name>window</name>
-        <message>
-            <location filename="../viewer.py" line="1418" />
-            <source>Zoom</source>
-            <translation>缩放</translation>
-        </message>
-        <message>
-            <location filename="../viewer.py" line="1424" />
-            <source>Zoom out on the selected axis</source>
-            <translation>缩小所选轴</translation>
-        </message>
-        <message>
-            <location filename="../viewer.py" line="1429" />
-            <source>Zoom in on the selected axis</source>
-            <translation>放大所选轴</translation>
         </message>
     </context>
 </TS>

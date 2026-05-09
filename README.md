@@ -49,7 +49,7 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 
 | Action | Control |
 | --- | --- |
-| Open waveform | `Ctrl+O` / `Cmd+O` or `Open Waveform` on the menu bar |
+| Open waveform | `Ctrl+O` / `Cmd+O` or `File` > `Open Waveform` |
 | Toggle active Y control group | `T` |
 | Select active Y control group | `Navigate` > `Y group` |
 | Pan X | drag on main plot |
@@ -61,7 +61,7 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 | Preview range selection | drag/release the highlighted preview region |
 | Highlight waveform | left-click a visible waveform |
 | Clear waveform highlight | left-click empty plot space |
-| Menu zoom | choose `Navigate` > `Zoom` as `X` or `Y`, then use the adjacent `+` / `-` buttons |
+| Menu zoom | choose `Navigate` > `Zoom` > `X` or `Y`, then use `Zoom In` / `Zoom Out` |
 | Reset view | `Ctrl+R` / `Cmd+R` or `View` > `Reset View` |
 | Configure waveform setup | `View` > `Waveform Setup...` |
 | Select renderer | `Display` > `Renderer` (`CPU` / `OpenGL`) |

@@ -153,13 +153,14 @@ def test_english_fallback_labels_and_stable_combo_ids(tmp_path: Path) -> None:
     assert window.plot_tabs.tabText(0) == "Waveforms"
     assert window.math_function.currentText()
     assert window.measure_range.itemText(0) == "Full waveform"
-    assert window.axis_group_selector.itemData(0) == "left"
-    assert window.axis_group_selector.itemData(1) == "right"
-    assert window.language_selector.currentData() == "system"
-    assert window.language_selector.findData("zh_CN") >= 0
-    assert window.language_selector.itemText(window.language_selector.findData("en")) == "English"
-    assert window.language_selector.itemText(window.language_selector.findData("zh_CN")) == "中文"
-    assert window.language_selector.itemText(window.language_selector.findData("ja_JP")) == "日本語"
+    assert set(window.axis_group_actions) == {"left", "right"}
+    assert window.axis_group_actions["left"].text() == "Left"
+    assert window.axis_group_actions["right"].text() == "Right"
+    assert window.language_actions["system"].isChecked()
+    assert "zh_CN" in window.language_actions
+    assert window.language_actions["en"].text() == "English"
+    assert window.language_actions["zh_CN"].text() == "\u4e2d\u6587"
+    assert window.language_actions["ja_JP"].text() == "\u65e5\u672c\u8a9e"
 
     dialog = AxisSetupDialog(
         window.data,
@@ -188,7 +189,7 @@ def test_language_selection_restarts_with_selected_language(tmp_path: Path, monk
     monkeypatch.setattr(QtCore.QProcess, "startDetached", lambda program, arguments: starts.append((program, arguments)) or True)
     monkeypatch.setattr(QtWidgets.QApplication, "quit", lambda: quits.append(True))
 
-    _select_combo_data(window.language_selector, "zh_CN")
+    window.language_actions["zh_CN"].trigger()
 
     assert starts
     assert starts[0][1][1:3] == ["--language", "zh_CN"]
@@ -202,14 +203,14 @@ def test_force_dark_mode_toggle_changes_application_palette(tmp_path: Path) -> N
     window = MainWindow()
     window.load_file(_write_wave_csv(tmp_path))
 
-    assert window.force_dark_mode.isChecked() is False
+    assert window.force_dark_mode_action.isChecked() is False
 
-    window.force_dark_mode.setChecked(True)
+    window.force_dark_mode_action.setChecked(True)
     dark_window = app.palette().color(QtGui.QPalette.ColorRole.Window)
 
     assert dark_window.lightness() < 80
 
-    window.force_dark_mode.setChecked(False)
+    window.force_dark_mode_action.setChecked(False)
 
 
 def test_load_file_schedules_waveform_setup(tmp_path: Path) -> None:
