@@ -1,6 +1,6 @@
 # CSV Waveform Viewer
 
-A Python desktop waveform viewer for CSV and xls files, built with codex, PySide6 and pyqtgraph. There may be undiscovered bugs so feel free to leave issue cards on GitHub!
+A Python desktop waveform viewer for CSV and xls files, built with codex, PySide6 and pyqtgraph. This app is tested on modern versions of OSX, Ubuntu, and Windows. There may be undiscovered bugs so feel free to leave issue cards on GitHub!
 
 ## Setup
 
@@ -17,6 +17,28 @@ python main.py example_csv/1t1r_set_read_0P1V.csv
 ```
 
 The app loads CSV and Excel waveform files, detects a time-like column such as `TimeOutput`, filters out mostly invalid channels, and plots valid channels with oscilloscope-style colors. Use the channel checkboxes to control visible traces, the mouse wheel and drag gestures to navigate, the lower preview region to select a time span, and the cursor tab to enable movable X/Y cursors.
+
+## Demo
+
+| Waveform viewer | FFT spectrum |
+| --- | --- |
+| ![Waveform viewer with native menus and dark oscilloscope-style plots](demo_pics/Look.png) | ![FFT spectrum view with math controls](demo_pics/FFT.png) |
+
+| Localization and detached panels | Ubuntu/system look |
+| --- | --- |
+| ![Localized UI with a detached right-side panel](demo_pics/MultiLang_Detach.png) | ![CSV Waveform Viewer running on Ubuntu](demo_pics/Ubuntu.png) |
+
+## Download And Run
+
+Packaged releases are intended for users who do not want to install Python.
+
+| Platform | How to run |
+| --- | --- |
+| Windows | Download `cswave-<version>-windows-x64.zip`, unzip it, and run `cswave.exe`. |
+| macOS | Download `cswave-<version>-macos.zip`, unzip it, and open `CSV Waveform Viewer.app`. If macOS blocks the first launch, use Finder > Open from the context menu. |
+| Linux | Download `cswave-<version>-linux-x64.tar.gz`, extract it, and run `cswave/cswave`. |
+
+You can open files from `File` > `Open Waveform`, so command-line usage is optional.
 
 ## Major Features
 
@@ -166,3 +188,31 @@ pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_en.ts
 pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_zh_CN.ts
 pyside6-lrelease translations/cswave_zh_CN.ts -qm translations/cswave_zh_CN.qm
 ```
+
+## Building Releases
+
+Release builds use PyInstaller and include translations, examples, README, and license files. Build artifacts are written to `release/`.
+
+Windows:
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
+macOS:
+
+```bash
+./scripts/build_macos.sh
+```
+
+Linux:
+
+```bash
+./scripts/build_linux.sh
+```
+
+Set `SKIP_TESTS=1` on macOS/Linux or pass `-SkipTests` on Windows to skip the test run during packaging.
+
+## License
+
+CSV Waveform Viewer is released under the MIT License. See [LICENSE](LICENSE).

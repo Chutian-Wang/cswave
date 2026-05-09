@@ -33,6 +33,7 @@ Tests:
 ## File Map
 
 - `main.py`: argparse entry point and QApplication startup.
+- `app_info.py`: app display name, version, copyright, and license constants used by UI and packaging.
 - `csv_loader.py`: CSV/Excel parsing, sheet discovery, time-column detection, numeric filtering, channel/timebase metadata.
 - `math_engine.py`: unary/binary math registry, FFT/window/zero-padding helpers, `SpectrumData`.
 - `viewer.py`: main window, native menu bar, side tabs, channel controls, cursor readout panel, Math tab, Waveform Setup dialog.
@@ -41,6 +42,8 @@ Tests:
 - `tests/test_math_engine.py`: calculated trace, FFT, windowing, DC removal, and zero-padding tests.
 - `tests/test_plot_widgets.py`: plot widget behavior regressions.
 - `tests/test_viewer_math.py`: viewer-level Math, Spectrum, Excel sheet selection, and setup workflow tests.
+- `cswave.spec`: PyInstaller release packaging configuration.
+- `scripts/build_windows.ps1`, `scripts/build_macos.sh`, `scripts/build_linux.sh`: platform release build helpers.
 
 ## Code Framework
 
@@ -159,6 +162,7 @@ The native Qt menu bar is organized as:
 - View: `Reset View`, `Waveform Setup...`
 - Navigate: `Y group`, `Zoom` axis selection, `Zoom In`, `Zoom Out`
 - Display: `Renderer` (`CPU` / `OpenGL`), `Language`, `Force look`
+- Help: `About CSV Waveform Viewer`
 
 Shortcuts:
 

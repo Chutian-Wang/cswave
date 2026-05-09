@@ -1,0 +1,60 @@
+name: Build Release Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            artifact: cswave-windows
+            path: release\*.zip
+          - platform: macos
+            os: macos-latest
+            artifact: cswave-macos
+            path: release/*
+          - platform: linux
+            os: ubuntu-latest
+            artifact: cswave-linux
+            path: release/*
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Build Windows package
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: .\scripts\build_windows.ps1
+
+      - name: Build macOS package
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: ./scripts/build_macos.sh
+
+      - name: Build Linux package
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: ./scripts/build_linux.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error

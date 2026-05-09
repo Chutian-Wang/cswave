@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 from PySide6 import QtCore, QtWidgets
 
 
 TRANSLATION_PREFIX = "cswave"
-TRANSLATION_DIR = Path(__file__).resolve().parent / "translations"
+TRANSLATION_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "translations"
 
 
 def install_translator(app: QtWidgets.QApplication, locale: str | None = None) -> str | None:

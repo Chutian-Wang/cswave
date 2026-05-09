@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -10,7 +11,8 @@ import pandas as pd
 import pytest
 
 from PySide6 import QtCore, QtGui, QtWidgets
-from viewer import AxisSetupDialog, MainWindow, TimebaseSettings, _time_column_validation, _waveform_with_timebase
+from plot_widgets import AxisGroupSettings
+from viewer import AxisSetupDialog, MainWindow, TimebaseSettings, _restart_command, _time_column_validation, _waveform_with_timebase
 
 
 def test_calculated_trace_add_remove_updates_viewer_state(tmp_path: Path) -> None:
@@ -78,6 +80,90 @@ def test_measure_pick_button_uses_clicked_waveform(tmp_path: Path) -> None:
     assert window.measure_channel.currentText() == "current"
     assert window.pending_waveform_pick is None
     assert window.pick_measure_channel.isChecked() is False
+
+
+def test_cursor_pick_button_uses_clicked_waveform_and_axis_group(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window._channel_axis_group_moved("voltage", "left")
+    window._channel_axis_group_moved("current", "right")
+
+    window._start_cursor_channel_pick(True)
+    window.waveform_plot._on_curve_clicked("current", object())
+
+    assert window.waveform_plot.cursor_axis_group == "right"
+    assert window.cursor_axis_selector.currentData() == "right"
+    assert window.active_channel.currentText() == "current"
+    assert window.pending_waveform_pick is None
+    assert window.pick_cursor_channel.isChecked() is False
+
+    window._start_cursor_channel_pick(True)
+    window.waveform_plot._on_curve_clicked("voltage", object())
+
+    assert window.waveform_plot.cursor_axis_group == "left"
+    assert window.cursor_axis_selector.currentData() == "left"
+    assert window.active_channel.currentText() == "voltage"
+
+
+def test_channels_panel_groups_waveforms_by_axis(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    window.waveform_plot.update_axis_settings(
+        {
+            "voltage": AxisGroupSettings("left", "V"),
+            "current": AxisGroupSettings("right", "A"),
+        }
+    )
+    window._sync_channel_checks()
+
+    assert _channel_names_in_group(window, "left") == ["voltage"]
+    assert _channel_names_in_group(window, "right") == ["current"]
+    assert _channel_names_in_group(window, "disabled") == []
+    assert window.channel_panel.empty_labels["disabled"].isHidden() is False
+
+    window.waveform_plot.update_axis_settings(
+        {
+            "voltage": AxisGroupSettings("disabled", "V"),
+            "current": AxisGroupSettings("right", "A"),
+        }
+    )
+    window._sync_channel_checks()
+
+    assert _channel_names_in_group(window, "left") == []
+    assert _channel_names_in_group(window, "right") == ["current"]
+    assert _channel_names_in_group(window, "disabled") == ["voltage"]
+    assert window.channel_checks["voltage"].selection_enabled is False
+
+
+def test_channel_axis_group_move_updates_plot_state(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    window._channel_axis_group_moved("voltage", "right")
+
+    assert window.waveform_plot.axis_settings["voltage"].group == "right"
+    assert _channel_names_in_group(window, "right") == ["voltage", "current"]
+    assert "voltage" in window.waveform_plot.selected_channels
+
+    window._channel_axis_group_moved("voltage", "disabled")
+
+    assert window.waveform_plot.axis_settings["voltage"].group == "disabled"
+    assert _channel_names_in_group(window, "disabled") == ["voltage"]
+    assert "voltage" not in window.waveform_plot.selected_channels
+    assert window.channel_checks["voltage"].isChecked() is False
+
+    window._channel_axis_group_moved("voltage", "left")
+
+    assert window.waveform_plot.axis_settings["voltage"].group == "left"
+    assert _channel_names_in_group(window, "left") == ["voltage"]
+    assert "voltage" in window.waveform_plot.selected_channels
 
 
 def test_right_side_tab_detaches_and_reattaches_on_close(tmp_path: Path) -> None:
@@ -148,6 +234,8 @@ def test_right_panel_forms_expand_fields_across_platforms(tmp_path: Path) -> Non
     assert window.math_function.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
     assert window.math_operand_a.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
     assert window.pick_operand_a.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
+    assert window.pick_cursor_channel.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
+    assert window.pick_cursor_channel.sizeHint().width() > 0
     assert window.math_operand_a.parentWidget().layout().itemAt(0).alignment() == QtCore.Qt.AlignmentFlag.AlignVCenter
     assert window.math_operand_a.parentWidget().layout().itemAt(1).alignment() == QtCore.Qt.AlignmentFlag.AlignVCenter
     assert window.measure_channel.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
@@ -219,9 +307,20 @@ def test_language_selection_restarts_with_selected_language(tmp_path: Path, monk
     window.language_actions["zh_CN"].trigger()
 
     assert starts
+    assert starts[0][0] == sys.executable
     assert starts[0][1][1:3] == ["--language", "zh_CN"]
     assert str(window.source_data.source_path) in starts[0][1]
     assert quits == [True]
+
+
+def test_restart_command_omits_script_path_for_frozen_app(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\Program Files\cswave\cswave.exe")
+
+    program, arguments = _restart_command("ja_JP")
+
+    assert program == r"C:\Program Files\cswave\cswave.exe"
+    assert arguments == ["--language", "ja_JP"]
 
 
 def test_force_dark_mode_toggle_changes_application_palette(tmp_path: Path) -> None:
@@ -520,6 +619,16 @@ def _select_combo_data(combo: QtWidgets.QComboBox, value: str) -> None:
     index = combo.findData(value)
     assert index >= 0
     combo.setCurrentIndex(index)
+
+
+def _channel_names_in_group(window: MainWindow, group: str) -> list[str]:
+    layout = window.channel_panel.group_layouts[group]
+    names = []
+    for index in range(1, layout.count()):
+        widget = layout.itemAt(index).widget()
+        if isinstance(widget, QtWidgets.QCheckBox):
+            names.append(widget.text())
+    return names
 
 
 def _channel_color(window: MainWindow, name: str) -> str:

@@ -18,6 +18,7 @@ from math_engine import (
     default_result_name,
 )
 from PySide6 import QtCore, QtGui, QtWidgets
+from app_info import APP_NAME, APP_VERSION, COPYRIGHT, LICENSE_NAME
 from app_theme import apply_dark_theme, apply_system_theme
 from plot_widgets import AxisGroupSettings, SpectrumPlot, WaveformPlot
 
@@ -153,15 +154,123 @@ def _keep_button_to_hint(button: QtWidgets.QAbstractButton) -> None:
     policy = button.sizePolicy()
     policy.setHorizontalPolicy(QtWidgets.QSizePolicy.Policy.Fixed)
     button.setSizePolicy(policy)
+    button.setMinimumWidth(max(button.minimumSizeHint().width(), button.sizeHint().width()))
+
+
+CHANNEL_MIME_TYPE = "application/x-cswave-channel"
+
+
+class DraggableChannelCheckBox(QtWidgets.QCheckBox):
+    def __init__(self, name: str, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(name, parent)
+        self.channel_name = name
+        self.selection_enabled = True
+        self._drag_start: QtCore.QPoint | None = None
+
+    def set_selection_enabled(self, enabled: bool) -> None:
+        self.selection_enabled = enabled
+        self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor if not enabled else QtCore.Qt.CursorShape.ArrowCursor)
+
+    def nextCheckState(self) -> None:
+        if self.selection_enabled:
+            super().nextCheckState()
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._drag_start = event.position().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if self._drag_start is None or not event.buttons() & QtCore.Qt.MouseButton.LeftButton:
+            super().mouseMoveEvent(event)
+            return
+        distance = (event.position().toPoint() - self._drag_start).manhattanLength()
+        if distance < QtWidgets.QApplication.startDragDistance():
+            super().mouseMoveEvent(event)
+            return
+        drag = QtGui.QDrag(self)
+        mime = QtCore.QMimeData()
+        mime.setData(CHANNEL_MIME_TYPE, self.channel_name.encode("utf-8"))
+        drag.setMimeData(mime)
+        drag.exec(QtCore.Qt.DropAction.MoveAction)
+        self._drag_start = None
+
+
+class ChannelGroupBox(QtWidgets.QGroupBox):
+    channelDropped = QtCore.Signal(str, str)
+
+    def __init__(self, title: str, group_id: str, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(title, parent)
+        self.group_id = group_id
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
+        if event.mimeData().hasFormat(CHANNEL_MIME_TYPE):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:
+        if event.mimeData().hasFormat(CHANNEL_MIME_TYPE):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event: QtGui.QDropEvent) -> None:
+        if not event.mimeData().hasFormat(CHANNEL_MIME_TYPE):
+            event.ignore()
+            return
+        name = bytes(event.mimeData().data(CHANNEL_MIME_TYPE)).decode("utf-8")
+        self.channelDropped.emit(name, self.group_id)
+        event.acceptProposedAction()
 
 
 class ChannelsPanel(QtWidgets.QWidget):
+    channelMoved = QtCore.Signal(str, str)
+
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self.channel_layout = QtWidgets.QVBoxLayout(self)
         self.channel_layout.setContentsMargins(8, 8, 8, 8)
-        self.channel_layout.setSpacing(6)
+        self.channel_layout.setSpacing(8)
+        self.group_layouts: dict[str, QtWidgets.QVBoxLayout] = {}
+        self.empty_labels: dict[str, QtWidgets.QLabel] = {}
+        for group_id, title in (
+            ("left", self.tr("Left Axis")),
+            ("right", self.tr("Right Axis")),
+            ("disabled", self.tr("Disabled")),
+        ):
+            box = ChannelGroupBox(title, group_id)
+            box.setToolTip(self.tr("Drag channels here to assign them to this group"))
+            box.channelDropped.connect(self.channelMoved)
+            layout = QtWidgets.QVBoxLayout(box)
+            layout.setContentsMargins(8, 8, 8, 8)
+            layout.setSpacing(5)
+            empty = QtWidgets.QLabel(self.tr("No channels"))
+            empty.setEnabled(False)
+            layout.addWidget(empty)
+            self.channel_layout.addWidget(box)
+            self.group_layouts[group_id] = layout
+            self.empty_labels[group_id] = empty
         self.channel_layout.addStretch()
+
+    def clear_channels(self) -> None:
+        for layout in self.group_layouts.values():
+            while layout.count() > 1:
+                item = layout.takeAt(1)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+        self._sync_empty_labels()
+
+    def add_channel(self, group: str, checkbox: QtWidgets.QCheckBox) -> None:
+        layout = self.group_layouts.get(group, self.group_layouts["disabled"])
+        layout.addWidget(checkbox)
+        self._sync_empty_labels()
+
+    def _sync_empty_labels(self) -> None:
+        for group, layout in self.group_layouts.items():
+            self.empty_labels[group].setVisible(layout.count() == 1)
 
 
 class CursorPanel(QtWidgets.QWidget):
@@ -172,6 +281,7 @@ class CursorPanel(QtWidgets.QWidget):
         y_cursor_toggle: QtWidgets.QCheckBox,
         cursor_axis_selector: QtWidgets.QComboBox,
         active_channel: QtWidgets.QComboBox,
+        pick_active_channel: QtWidgets.QPushButton,
         reset_callback: object,
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
@@ -197,8 +307,9 @@ class CursorPanel(QtWidgets.QWidget):
         controls_layout.addWidget(QtWidgets.QLabel(self.tr("Cursor group")), 2, 0)
         controls_layout.addWidget(cursor_axis_selector, 2, 1)
         _expand_horizontally(active_channel)
+        _keep_button_to_hint(pick_active_channel)
         controls_layout.addWidget(QtWidgets.QLabel(self.tr("Active channel")), 3, 0)
-        controls_layout.addWidget(active_channel, 3, 1)
+        controls_layout.addWidget(_operand_picker_row(active_channel, pick_active_channel), 3, 1)
         controls_layout.setColumnStretch(1, 1)
         layout.addWidget(controls)
 
@@ -420,7 +531,7 @@ class MeasurePanel(QtWidgets.QWidget):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, *, startup_language: str = "system") -> None:
         super().__init__()
-        self.setWindowTitle("cswave")
+        self.setWindowTitle(APP_NAME)
         self.resize(1280, 820)
         self.startup_language = _normalized_startup_language(startup_language)
         self.data: WaveformData | None = None
@@ -439,6 +550,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.waveform_plot.traceClicked.connect(self._waveform_picked)
 
         self.channel_panel = ChannelsPanel()
+        self.channel_panel.channelMoved.connect(self._channel_axis_group_moved)
         self.channel_layout = self.channel_panel.channel_layout
 
         self.active_channel = QtWidgets.QComboBox()
@@ -451,12 +563,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.x_cursor_toggle.toggled.connect(self._set_x_cursors_visible)
         self.y_cursor_toggle.toggled.connect(self._set_y_cursors_visible)
         self.active_channel.currentTextChanged.connect(self._active_channel_changed)
+        self.pick_cursor_channel = QtWidgets.QPushButton(self.tr("Pick"))
+        self.pick_cursor_channel.setCheckable(True)
+        self.pick_cursor_channel.setToolTip(self.tr("Click, then click a waveform trace to use it as the cursor active channel"))
+        self.pick_cursor_channel.clicked.connect(self._start_cursor_channel_pick)
 
         cursor_panel = CursorPanel(
             x_cursor_toggle=self.x_cursor_toggle,
             y_cursor_toggle=self.y_cursor_toggle,
             cursor_axis_selector=self.cursor_axis_selector,
             active_channel=self.active_channel,
+            pick_active_channel=self.pick_cursor_channel,
             reset_callback=self._reset_cursors,
         )
         self.cursor_labels = cursor_panel.cursor_labels
@@ -583,9 +700,11 @@ class MainWindow(QtWidgets.QMainWindow):
         view_menu = menu_bar.addMenu(self.tr("View"))
         navigate_menu = menu_bar.addMenu(self.tr("Navigate"))
         display_menu = menu_bar.addMenu(self.tr("Display"))
+        help_menu = menu_bar.addMenu(self.tr("Help"))
         view_menu.setToolTipsVisible(True)
         navigate_menu.setToolTipsVisible(True)
         display_menu.setToolTipsVisible(True)
+        help_menu.setToolTipsVisible(True)
 
         reset_action = QtGui.QAction(self.tr("Reset View"), self)
         reset_action.triggered.connect(self._reset_active_view)
@@ -676,6 +795,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.force_dark_mode_action.setCheckable(True)
         self.force_dark_mode_action.setToolTip(self.tr("Force the app style instead of using the system look"))
         self.force_dark_mode_action.toggled.connect(self._force_dark_mode_changed)
+
+        about_action = help_menu.addAction(self.tr("About {app}").format(app=APP_NAME))
+        about_action.triggered.connect(self._show_about_dialog)
+
+    def _show_about_dialog(self) -> None:
+        text = (
+            f"<b>{APP_NAME}</b><br>"
+            f"{self.tr('Version')} {APP_VERSION}<br><br>"
+            f"{self.tr('A desktop waveform viewer for CSV and Excel oscilloscope data.')}<br><br>"
+            f"{self.tr('License')}: {LICENSE_NAME}<br>"
+            f"{COPYRIGHT}<br><br>"
+            f"{self.tr('Built with PySide6, pyqtgraph, NumPy, and pandas.')}"
+        )
+        QtWidgets.QMessageBox.about(self, self.tr("About {app}").format(app=APP_NAME), text)
 
     def _open_dialog(self) -> None:
         path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
@@ -831,10 +964,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._restart_with_language(language)
 
     def _restart_with_language(self, language: str) -> None:
-        arguments = [str(Path(sys.argv[0]).resolve()), "--language", language]
+        program, arguments = _restart_command(language)
         if self.source_data is not None:
             arguments.append(str(self.source_data.source_path))
-        if QtCore.QProcess.startDetached(sys.executable, arguments):
+        if QtCore.QProcess.startDetached(program, arguments):
             QtWidgets.QApplication.quit()
             return
         QtWidgets.QMessageBox.warning(self, self.tr("Restart Failed"), self.tr("Could not restart the application."))
@@ -881,28 +1014,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self._open_waveform_setup()
 
     def _rebuild_channels(self, channels: list[ChannelData]) -> None:
-        while self.channel_layout.count() > 1:
-            item = self.channel_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        self.channel_panel.clear_channels()
         self.channel_checks.clear()
 
         for channel in channels:
-            checkbox = QtWidgets.QCheckBox(channel.name)
-            checkbox.setChecked(channel.name in self.waveform_plot.selected_channels)
-            checkbox.setEnabled(self.waveform_plot.axis_settings.get(channel.name, AxisGroupSettings("disabled", "")).group != "disabled")
+            setting = self.waveform_plot.axis_settings.get(channel.name, AxisGroupSettings("disabled", ""))
+            group = setting.group if setting.group in {"left", "right"} else "disabled"
+            checkbox = DraggableChannelCheckBox(channel.name)
+            checkbox.setChecked(group != "disabled" and channel.name in self.waveform_plot.selected_channels)
+            checkbox.set_selection_enabled(group != "disabled")
             checkbox.setToolTip(self._channel_checkbox_tooltip(channel.name))
             checkbox.toggled.connect(self._channel_selection_changed)
-            checkbox.setStyleSheet(f"QCheckBox {{ color: {channel.color}; }}")
+            color = channel.color if group != "disabled" else self.palette().color(QtGui.QPalette.ColorRole.PlaceholderText).name()
+            checkbox.setStyleSheet(f"QCheckBox {{ color: {color}; }}")
             self.channel_checks[channel.name] = checkbox
-            self.channel_layout.insertWidget(self.channel_layout.count() - 1, checkbox)
+            self.channel_panel.add_channel(group, checkbox)
 
     def _sync_channel_checks(self) -> None:
+        if self.data is not None:
+            self._rebuild_channels(self.data.channels)
+            return
         for name, checkbox in self.channel_checks.items():
             disabled = self.waveform_plot.axis_settings.get(name, AxisGroupSettings("disabled", "")).group == "disabled"
             checkbox.blockSignals(True)
-            checkbox.setEnabled(not disabled)
+            if isinstance(checkbox, DraggableChannelCheckBox):
+                checkbox.set_selection_enabled(not disabled)
             checkbox.setChecked(not disabled and name in self.waveform_plot.selected_channels)
             checkbox.setToolTip(self._channel_checkbox_tooltip(name))
             checkbox.blockSignals(False)
@@ -910,8 +1046,34 @@ class MainWindow(QtWidgets.QMainWindow):
     def _channel_checkbox_tooltip(self, name: str) -> str:
         setting = self.waveform_plot.axis_settings.get(name)
         if setting is not None and setting.group == "disabled":
-            return self.tr("Disabled in Waveform Setup")
-        return self.tr("Show or hide this enabled waveform")
+            return self.tr("Drag to Left Axis or Right Axis to enable this waveform")
+        return self.tr("Show or hide this waveform, or drag it to another axis group")
+
+    def _channel_axis_group_moved(self, name: str, group: str) -> None:
+        if self.data is None or group not in {"left", "right", "disabled"}:
+            return
+        if name not in self.waveform_plot.axis_settings:
+            return
+        current = self.waveform_plot.axis_settings[name]
+        if current.group == group:
+            return
+        settings = dict(self.waveform_plot.axis_settings)
+        settings[name] = AxisGroupSettings(group, current.unit, current.y_min, current.y_max)
+        self.waveform_plot.update_axis_settings(settings)
+        enabled = self.waveform_plot.enabled_channel_names()
+        self.waveform_plot.set_selected_channels(self.waveform_plot.selected_channels & enabled)
+        if group in {"left", "right"}:
+            self.waveform_plot.selected_channels.add(name)
+            self.waveform_plot.set_selected_channels(self.waveform_plot.selected_channels)
+        self._rebuild_channels(self.data.channels)
+        self._rebuild_active_channel(self.data.channels)
+        self._update_cursor_panel()
+        label = {
+            "left": self.tr("Left Axis"),
+            "right": self.tr("Right Axis"),
+            "disabled": self.tr("Disabled"),
+        }[group]
+        self.statusBar().showMessage(self.tr("Moved {name} to {group}").format(name=name, group=label))
 
     def _rebuild_active_channel(self, channels: list[ChannelData]) -> None:
         previous = self.active_channel.currentText()
@@ -983,6 +1145,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def _active_channel_changed(self, channel_name: str) -> None:
         if channel_name:
             self.last_cursor_channel_by_group[self.waveform_plot.cursor_axis_group] = channel_name
+        self._update_cursor_panel()
+
+    def _select_cursor_active_channel(self, channel_name: str) -> None:
+        if self.data is None or channel_name not in self.waveform_plot.axis_settings:
+            return
+        group = self.waveform_plot.axis_settings[channel_name].group
+        if group not in {"left", "right"}:
+            return
+        self.last_cursor_channel_by_group[group] = channel_name
+        self.waveform_plot.set_cursor_axis_group(group, preserve_visual_position=True)
+        self._sync_cursor_axis_selector()
+        self._rebuild_active_channel(self.data.channels)
+        self.active_channel.setCurrentText(channel_name)
         self._update_cursor_panel()
 
     def _sync_cursor_axis_selector(self) -> None:
@@ -1177,10 +1352,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pending_waveform_pick = pick_id
         self.pick_operand_a.setChecked(operand == "a")
         self.pick_operand_b.setChecked(operand == "b")
+        if hasattr(self, "pick_cursor_channel"):
+            self.pick_cursor_channel.setChecked(False)
         if hasattr(self, "pick_measure_channel"):
             self.pick_measure_channel.setChecked(False)
         self.plot_tabs.setCurrentWidget(self.waveform_plot)
         self.statusBar().showMessage(self.tr("Click a waveform trace to select operand {operand}").format(operand=operand.upper()))
+
+    def _start_cursor_channel_pick(self, checked: bool) -> None:
+        if not checked:
+            if self.pending_waveform_pick == "cursor":
+                self._clear_operand_pick()
+            return
+        self.pending_waveform_pick = "cursor"
+        self.pick_operand_a.setChecked(False)
+        self.pick_operand_b.setChecked(False)
+        self.pick_cursor_channel.setChecked(True)
+        if hasattr(self, "pick_measure_channel"):
+            self.pick_measure_channel.setChecked(False)
+        self.plot_tabs.setCurrentWidget(self.waveform_plot)
+        self.statusBar().showMessage(self.tr("Click a waveform trace to select the cursor active channel"))
 
     def _start_measure_pick(self, checked: bool) -> None:
         if not checked:
@@ -1190,6 +1381,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pending_waveform_pick = "measure"
         self.pick_operand_a.setChecked(False)
         self.pick_operand_b.setChecked(False)
+        if hasattr(self, "pick_cursor_channel"):
+            self.pick_cursor_channel.setChecked(False)
         self.pick_measure_channel.setChecked(True)
         self.plot_tabs.setCurrentWidget(self.waveform_plot)
         self.statusBar().showMessage(self.tr("Click a waveform trace to select the measurement waveform"))
@@ -1198,11 +1391,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.pending_waveform_pick = None
         self.pick_operand_a.setChecked(False)
         self.pick_operand_b.setChecked(False)
+        if hasattr(self, "pick_cursor_channel"):
+            self.pick_cursor_channel.setChecked(False)
         if hasattr(self, "pick_measure_channel"):
             self.pick_measure_channel.setChecked(False)
 
     def _waveform_picked(self, channel_name: str) -> None:
         if self.pending_waveform_pick is None:
+            return
+        if self.pending_waveform_pick == "cursor":
+            self._select_cursor_active_channel(channel_name)
+            self._clear_operand_pick()
+            self.statusBar().showMessage(self.tr("Cursor channel: {name}").format(name=channel_name))
             return
         if self.pending_waveform_pick == "measure":
             self.measure_channel.setCurrentText(channel_name)
@@ -1499,6 +1699,12 @@ def _normalized_startup_language(language: str | None) -> str:
     if language is None or language.strip().lower() in {"", "system", "auto"}:
         return "system"
     return language.replace("-", "_")
+
+
+def _restart_command(language: str) -> tuple[str, list[str]]:
+    if getattr(sys, "frozen", False):
+        return sys.executable, ["--language", language]
+    return sys.executable, [str(Path(sys.argv[0]).resolve()), "--language", language]
 
 
 def _default_axis_group_for_channel(channel: ChannelData) -> str:
