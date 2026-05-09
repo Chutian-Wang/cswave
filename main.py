@@ -15,7 +15,7 @@ def main() -> int:
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow()
     if args.csv:
-        window.load_file(args.csv)
+        window.load_file(args.csv, show_setup=True)
     window.show()
     return app.exec()
 

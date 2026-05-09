@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,13 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from plot_widgets import AxisGroupSettings, SpectrumPlot, WaveformPlot
 
 
+@dataclass(frozen=True)
+class TimebaseSettings:
+    kind: str
+    column: str | None = None
+    value: float | None = None
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -31,6 +39,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.channel_checks: dict[str, QtWidgets.QCheckBox] = {}
         self.last_cursor_channel_by_group: dict[str, str] = {}
         self.pending_math_operand_pick: str | None = None
+        self._waveform_setup_pending = False
 
         self.waveform_plot = WaveformPlot()
         self.spectrum_plot = SpectrumPlot()
@@ -83,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_actions()
         self._build_shortcuts()
 
-    def load_file(self, path: str | Path, *, sheet_name: str | None = None) -> None:
+    def load_file(self, path: str | Path, *, sheet_name: str | None = None, show_setup: bool = False) -> None:
         selected_sheet = sheet_name
         if selected_sheet is None and Path(path).suffix.lower() in {".xls", ".xlsx", ".xlsm"}:
             selected_sheet = self._select_excel_sheet(path)
@@ -108,6 +117,18 @@ class MainWindow(QtWidgets.QMainWindow):
             f"Loaded {data.source_path.name}{sheet}: {len(data.channels)} channel(s), time base: {time_source}.{ignored}"
         )
         self._update_cursor_panel()
+        if show_setup:
+            self._schedule_waveform_setup()
+
+    def _schedule_waveform_setup(self) -> None:
+        self._waveform_setup_pending = True
+        QtCore.QTimer.singleShot(0, self._open_pending_waveform_setup)
+
+    def _open_pending_waveform_setup(self) -> None:
+        if not self._waveform_setup_pending:
+            return
+        self._waveform_setup_pending = False
+        self._open_waveform_setup()
 
     def _build_actions(self) -> None:
         toolbar = self.addToolBar("Main")
@@ -129,10 +150,10 @@ class MainWindow(QtWidgets.QMainWindow):
         reset_action.triggered.connect(self._reset_active_view)
         toolbar.addAction(reset_action)
 
-        axis_setup_action = QtGui.QAction("Axis Groups...", self)
-        axis_setup_action.setToolTip("Configure left/right axis grouping, units, and Y ranges")
-        axis_setup_action.triggered.connect(self._open_axis_setup)
-        toolbar.addAction(axis_setup_action)
+        waveform_setup_action = QtGui.QAction("Waveform Setup...", self)
+        waveform_setup_action.setToolTip("Configure left/right axis grouping, units, and Y ranges")
+        waveform_setup_action.triggered.connect(self._open_waveform_setup)
+        toolbar.addAction(waveform_setup_action)
 
         toolbar.addSeparator()
         toolbar.addWidget(_toolbar_section_label("Navigate"))
@@ -185,7 +206,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not path:
             return
         try:
-            self.load_file(path)
+            self.load_file(path, show_setup=True)
         except Exception as exc:  # noqa: BLE001 - GUI needs user-facing failure.
             QtWidgets.QMessageBox.critical(self, "Could not load waveform", str(exc))
 
@@ -282,17 +303,21 @@ class MainWindow(QtWidgets.QMainWindow):
     def _toggle_y_cursors(self) -> None:
         self.y_cursor_toggle.setChecked(not self.y_cursor_toggle.isChecked())
 
-    def _open_axis_setup(self) -> None:
+    def _open_waveform_setup(self) -> None:
         if self.data is None:
-            QtWidgets.QMessageBox.information(self, "Axis Groups", "Load a CSV file before configuring axes.")
+            QtWidgets.QMessageBox.information(self, "Waveform Setup", "Load a waveform file before configuring axes.")
             return
-        dialog = AxisSetupDialog(self.data.channels, self.waveform_plot.axis_settings, self.waveform_plot.group_defaults(), self)
+        dialog = AxisSetupDialog(self.data, self.waveform_plot.axis_settings, self.waveform_plot.group_defaults(), self)
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return
-        self.waveform_plot.update_axis_settings(dialog.settings())
+        self._apply_timebase_settings(dialog.timebase_settings())
+        self.waveform_plot.update_axis_settings(self._settings_for_current_channels(dialog.settings()))
         self._sync_channel_checks()
         self._rebuild_active_channel(self.data.channels)
         self._update_cursor_panel()
+
+    def _open_axis_setup(self) -> None:
+        self._open_waveform_setup()
 
     def _build_cursor_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
@@ -479,7 +504,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _channel_checkbox_tooltip(self, name: str) -> str:
         setting = self.waveform_plot.axis_settings.get(name)
         if setting is not None and setting.group == "disabled":
-            return "Disabled in Axis Groups"
+            return "Disabled in Waveform Setup"
         return "Show or hide this enabled waveform"
 
     def _rebuild_active_channel(self, channels: list[ChannelData]) -> None:
@@ -851,6 +876,10 @@ class MainWindow(QtWidgets.QMainWindow):
             ignored_columns=self.source_data.ignored_columns,
             source_path=self.source_data.source_path,
             time_column=self.source_data.time_column,
+            sheet_name=self.source_data.sheet_name,
+            time_candidates=self.source_data.time_candidates,
+            timebase_kind=self.source_data.timebase_kind,
+            timebase_value=self.source_data.timebase_value,
         )
         self.waveform_plot.replace_data_preserving_view(self.data, select=select)
         self._rebuild_channels(self.data.channels)
@@ -869,6 +898,43 @@ class MainWindow(QtWidgets.QMainWindow):
     def _next_calculated_color(self) -> str:
         index = len(self.source_data.channels if self.source_data is not None else []) + len(self.calculated_channels)
         return OSCILLOSCOPE_COLORS[index % len(OSCILLOSCOPE_COLORS)]
+
+    def _apply_timebase_settings(self, settings: TimebaseSettings) -> None:
+        if self.source_data is None or self.data is None:
+            return
+        if (
+            self.data.timebase_kind == settings.kind
+            and self.data.time_column == settings.column
+            and self.data.timebase_value == settings.value
+        ):
+            return
+        self.calculated_channels.clear()
+        self.spectra.clear()
+        self.spectrum_plot.clear()
+        self.frequency_min.clear()
+        self.frequency_max.clear()
+        self.source_data = _waveform_with_timebase(self.source_data, settings)
+        self.data = self.source_data
+        self.waveform_plot.set_data(self.data)
+        self._rebuild_channels(self.data.channels)
+        self._rebuild_active_channel(self.data.channels)
+        self._sync_math_controls()
+        self._sync_math_outputs()
+        self._sync_cursor_axis_selector()
+
+    def _settings_for_current_channels(
+        self,
+        settings: dict[str, AxisGroupSettings],
+    ) -> dict[str, AxisGroupSettings]:
+        if self.data is None:
+            return settings
+        return {
+            channel.name: settings.get(
+                channel.name,
+                AxisGroupSettings(_default_axis_group_for_channel(channel), channel.unit or ""),
+            )
+            for channel in self.data.channels
+        }
 
     @staticmethod
     def _scroll_area(widget: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
@@ -896,6 +962,108 @@ def _format_value(value: float | None) -> str:
     return f"{value:.8g}"
 
 
+def _default_axis_group_for_channel(channel: ChannelData) -> str:
+    unit = (channel.unit or "").lower()
+    if unit == "v":
+        return "left"
+    if unit == "a":
+        return "right"
+    return "disabled"
+
+
+def _waveform_with_timebase(source: WaveformData, settings: TimebaseSettings) -> WaveformData:
+    candidates = source.time_candidates or {
+        channel.name: channel.values
+        for channel in source.channels
+    }
+    sample_count = len(source.time)
+    if candidates:
+        sample_count = len(next(iter(candidates.values())))
+
+    if settings.kind == "column":
+        if settings.column is None or settings.column not in candidates:
+            raise ValueError("Select a valid time column")
+        time_values = candidates[settings.column].astype(float)
+        time_column = settings.column
+        timebase_value = None
+    elif settings.kind == "sample_rate":
+        if settings.value is None or settings.value <= 0:
+            raise ValueError("Sample rate must be greater than zero")
+        time_values = np.arange(sample_count, dtype=float) / settings.value
+        time_column = None
+        timebase_value = settings.value
+    elif settings.kind == "time_step":
+        if settings.value is None or settings.value <= 0:
+            raise ValueError("Time step must be greater than zero")
+        time_values = np.arange(sample_count, dtype=float) * settings.value
+        time_column = None
+        timebase_value = settings.value
+    else:
+        time_values = np.arange(sample_count, dtype=float)
+        time_column = None
+        timebase_value = None
+
+    channel_names = [
+        name for name in candidates
+        if not (settings.kind == "column" and name == settings.column)
+    ]
+    channels = [
+        ChannelData(
+            name=name,
+            values=candidates[name].astype(float),
+            color=OSCILLOSCOPE_COLORS[index % len(OSCILLOSCOPE_COLORS)],
+            unit=_guess_channel_unit(name),
+        )
+        for index, name in enumerate(channel_names)
+    ]
+    return WaveformData(
+        time=time_values,
+        channels=channels,
+        ignored_columns=source.ignored_columns,
+        source_path=source.source_path,
+        time_column=time_column,
+        sheet_name=source.sheet_name,
+        time_candidates=candidates,
+        timebase_kind=settings.kind,
+        timebase_value=timebase_value,
+    )
+
+
+def _guess_channel_unit(name: str) -> str | None:
+    lowered = name.lower()
+    if lowered.startswith("v") or "voltage" in lowered:
+        return "V"
+    if lowered.startswith("i") or "current" in lowered:
+        return "A"
+    if lowered in {"r", "r_av"} or "resistance" in lowered:
+        return "ohm"
+    if lowered == "g" or "conductance" in lowered:
+        return "S"
+    return None
+
+
+def _time_column_validation(values: np.ndarray | None) -> tuple[bool, str]:
+    if values is None:
+        return False, "Select a time column."
+    if values.size < 2:
+        return False, "Time column needs at least two samples."
+    if not np.isfinite(values).all():
+        return False, "Time column contains non-finite values."
+    diffs = np.diff(values.astype(float))
+    if not np.all(diffs > 0):
+        return False, "Time column must be strictly increasing."
+    spacing = float(np.median(diffs))
+    tolerance = max(abs(spacing) * 1e-4, 1e-15)
+    max_variation = float(np.max(np.abs(diffs - spacing)))
+    if max_variation > tolerance:
+        return (
+            True,
+            f"Increasing time column; nominal spacing: {spacing:.8g} s/pt "
+            f"(max step variation {max_variation:.3g}). FFT uses median spacing.",
+        )
+    return True, f"Uniform spacing: {spacing:.8g} s/pt."
+
+
 class AxisSetupDialog(QtWidgets.QDialog):
     GROUP_COLUMN = 1
     UNIT_COLUMN = 2
@@ -904,18 +1072,45 @@ class AxisSetupDialog(QtWidgets.QDialog):
 
     def __init__(
         self,
-        channels: list[ChannelData],
+        data: WaveformData,
         current_settings: dict[str, AxisGroupSettings],
         group_defaults: dict[str, tuple[float, float]],
         parent: QtWidgets.QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Axis Group Setup")
-        self.resize(720, 420)
-        self.channels = channels
+        self.setWindowTitle("Waveform Setup")
+        self.resize(760, 560)
+        self.data = data
+        self.channels = data.channels
+        self.time_candidates = data.time_candidates or {
+            channel.name: channel.values
+            for channel in data.channels
+        }
         self.group_defaults = group_defaults
 
-        self.table = QtWidgets.QTableWidget(len(channels), 5)
+        time_box = QtWidgets.QGroupBox("Time Base")
+        time_layout = QtWidgets.QGridLayout(time_box)
+        time_layout.setContentsMargins(8, 8, 8, 8)
+        self.timebase_mode = QtWidgets.QComboBox()
+        self.timebase_mode.addItem("Time column", "column")
+        self.timebase_mode.addItem("Sample rate (Sa/s)", "sample_rate")
+        self.timebase_mode.addItem("Sample interval (s/pt)", "time_step")
+        self.timebase_mode.addItem("Sample index", "sample_index")
+        self.timebase_column = QtWidgets.QComboBox()
+        self.timebase_column.addItems(list(self.time_candidates))
+        self.timebase_value = QtWidgets.QLineEdit()
+        self.timebase_status = QtWidgets.QLabel()
+        self.timebase_status.setWordWrap(True)
+        time_layout.addWidget(QtWidgets.QLabel("Mode"), 0, 0)
+        time_layout.addWidget(self.timebase_mode, 0, 1)
+        time_layout.addWidget(QtWidgets.QLabel("Column"), 1, 0)
+        time_layout.addWidget(self.timebase_column, 1, 1)
+        time_layout.addWidget(QtWidgets.QLabel("Value"), 2, 0)
+        time_layout.addWidget(self.timebase_value, 2, 1)
+        time_layout.addWidget(self.timebase_status, 3, 0, 1, 2)
+        time_layout.setColumnStretch(1, 1)
+
+        self.table = QtWidgets.QTableWidget(len(self.channels), 5)
         self.table.setHorizontalHeaderLabels(["Waveform", "Axis", "Unit", "Y min", "Y max"])
         self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
@@ -923,7 +1118,7 @@ class AxisSetupDialog(QtWidgets.QDialog):
         self.table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
-        for row, channel in enumerate(channels):
+        for row, channel in enumerate(self.channels):
             settings = current_settings.get(channel.name, AxisGroupSettings("left", channel.unit or ""))
             name_item = QtWidgets.QTableWidgetItem(channel.name)
             name_item.setFlags(name_item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)
@@ -942,16 +1137,22 @@ class AxisSetupDialog(QtWidgets.QDialog):
             self.table.setItem(row, self.Y_MIN_COLUMN, QtWidgets.QTableWidgetItem(_format_value(y_min)))
             self.table.setItem(row, self.Y_MAX_COLUMN, QtWidgets.QTableWidgetItem(_format_value(y_max)))
 
-        buttons = QtWidgets.QDialogButtonBox(
+        self.buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok
             | QtWidgets.QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
 
         layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(time_box)
         layout.addWidget(self.table)
-        layout.addWidget(buttons)
+        layout.addWidget(self.buttons)
+
+        self.timebase_mode.currentIndexChanged.connect(self._timebase_controls_changed)
+        self.timebase_column.currentIndexChanged.connect(self._timebase_controls_changed)
+        self.timebase_value.textChanged.connect(self._timebase_controls_changed)
+        self._initialize_timebase_controls()
 
     def settings(self) -> dict[str, AxisGroupSettings]:
         result: dict[str, AxisGroupSettings] = {}
@@ -967,6 +1168,51 @@ class AxisSetupDialog(QtWidgets.QDialog):
                 y_max=_parse_float_item(y_max_item),
             )
         return result
+
+    def timebase_settings(self) -> TimebaseSettings:
+        kind = self.timebase_mode.currentData()
+        if kind == "column":
+            return TimebaseSettings(kind="column", column=self.timebase_column.currentText() or None)
+        if kind in {"sample_rate", "time_step"}:
+            return TimebaseSettings(kind=kind, value=_parse_float_text(self.timebase_value.text()))
+        return TimebaseSettings(kind="sample_index")
+
+    def _initialize_timebase_controls(self) -> None:
+        mode_index = self.timebase_mode.findData(self.data.timebase_kind)
+        if mode_index < 0:
+            mode_index = self.timebase_mode.findData("column" if self.data.time_column else "sample_index")
+        self.timebase_mode.setCurrentIndex(max(mode_index, 0))
+        if self.data.time_column:
+            self.timebase_column.setCurrentText(self.data.time_column)
+        if self.data.timebase_value is not None:
+            self.timebase_value.setText(_format_value(self.data.timebase_value))
+        else:
+            self.timebase_value.setText("1")
+        self._timebase_controls_changed()
+
+    def _timebase_controls_changed(self) -> None:
+        kind = self.timebase_mode.currentData()
+        self.timebase_column.setEnabled(kind == "column")
+        self.timebase_value.setEnabled(kind in {"sample_rate", "time_step"})
+        valid = True
+        status = ""
+        if kind == "column":
+            values = self.time_candidates.get(self.timebase_column.currentText())
+            valid, status = _time_column_validation(values)
+        elif kind == "sample_rate":
+            value = _parse_float_text(self.timebase_value.text())
+            valid = value is not None and value > 0
+            status = "Generated time from sample rate." if valid else "Sample rate must be greater than zero."
+        elif kind == "time_step":
+            value = _parse_float_text(self.timebase_value.text())
+            valid = value is not None and value > 0
+            status = "Generated time from sample interval." if valid else "Sample interval must be greater than zero."
+        else:
+            status = "Generated sample-index time base."
+        self.timebase_status.setText(status)
+        ok_button = self.buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        if ok_button is not None:
+            ok_button.setEnabled(valid)
 
     def _apply_default_range(self, row: int) -> None:
         y_min, y_max = self.group_defaults.get(self._group_at(row), self._channel_range(row))

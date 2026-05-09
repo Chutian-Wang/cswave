@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from PySide6 import QtCore, QtWidgets
-from viewer import MainWindow
+from viewer import AxisSetupDialog, MainWindow, TimebaseSettings, _time_column_validation, _waveform_with_timebase
 
 
 def test_calculated_trace_add_remove_updates_viewer_state(tmp_path: Path) -> None:
@@ -64,6 +64,71 @@ def test_operand_pick_buttons_use_clicked_waveform(tmp_path: Path) -> None:
 
     assert window.math_operand_b.currentText() == "voltage"
     assert window.pick_operand_b.isChecked() is False
+
+
+def test_load_file_schedules_waveform_setup(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    opened = []
+    window = MainWindow()
+    window._open_waveform_setup = lambda: opened.append(window.data.source_path.name)
+
+    window.load_file(_write_wave_csv(tmp_path), show_setup=True)
+    app.processEvents()
+
+    assert opened == ["wave.csv"]
+
+
+def test_generated_timebase_treats_detected_time_as_signal(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    data = _waveform_with_timebase(window.source_data, TimebaseSettings("sample_rate", value=2.0))
+
+    assert data.time_column is None
+    assert data.timebase_kind == "sample_rate"
+    assert data.timebase_value == 2.0
+    assert data.time.tolist() == pytest.approx([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5])
+    assert "time" in {channel.name for channel in data.channels}
+
+
+def test_selected_time_column_is_validated_and_removed_from_signals(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    path = tmp_path / "wave.csv"
+    path.write_text("A,B,C\n0,10,1\n1,20,2\n0.5,30,3\n", encoding="utf-8")
+    window = MainWindow()
+    window.load_file(path)
+
+    dialog = AxisSetupDialog(
+        window.data,
+        window.waveform_plot.axis_settings,
+        window.waveform_plot.group_defaults(),
+    )
+    dialog.timebase_mode.setCurrentIndex(dialog.timebase_mode.findData("column"))
+    dialog.timebase_column.setCurrentText("A")
+
+    assert dialog.buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).isEnabled() is False
+
+    dialog.timebase_column.setCurrentText("B")
+    assert dialog.buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).isEnabled() is True
+    data = _waveform_with_timebase(window.source_data, dialog.timebase_settings())
+
+    assert data.time.tolist() == [10.0, 20.0, 30.0]
+    assert "B" not in {channel.name for channel in data.channels}
+    assert {"A", "C"} == {channel.name for channel in data.channels}
+
+
+def test_increasing_nonuniform_time_column_is_allowed_with_warning() -> None:
+    values = np.array([0.0, 15e-9, 30e-9, 55e-9, 75e-9])
+
+    valid, status = _time_column_validation(values)
+
+    assert valid is True
+    assert "nominal spacing" in status
+    assert "FFT uses median spacing" in status
 
 
 def test_fft_uses_x_cursors_window_and_frequency_range(tmp_path: Path) -> None:

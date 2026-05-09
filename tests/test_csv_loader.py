@@ -20,6 +20,8 @@ def test_loads_example_csv_and_detects_timeoutput() -> None:
     data = load_csv_waveform("example_csv/1t1r_set_read_0P1V.csv")
 
     assert data.time_column == "TimeOutput"
+    assert data.timebase_kind == "column"
+    assert "TimeOutput" in data.time_candidates
     assert len(data.time) == 22260
     assert {"VMeasCh1", "IMeasCh1", "VMeasCh2", "IMeasCh2", "G", "R"}.issubset(
         {channel.name for channel in data.channels}
@@ -37,6 +39,8 @@ def test_falls_back_to_sample_index_without_time_column(tmp_path: Path) -> None:
     data = load_csv_waveform(csv_path)
 
     assert data.time_column is None
+    assert data.timebase_kind == "sample_index"
+    assert set(data.time_candidates) == {"A", "B"}
     assert data.time.tolist() == [0.0, 1.0, 2.0]
     assert [channel.name for channel in data.channels] == ["A", "B"]
 

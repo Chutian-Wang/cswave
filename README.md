@@ -28,7 +28,7 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
   - voltage channels (`V`) on the left axis
   - current channels (`A`) on the right axis
   - non-V/I channels disabled by default
-- Axis Groups dialog for assigning waveforms to left, right, or disabled groups, plus units and initial Y ranges.
+- Waveform Setup dialog for selecting/overriding the time base and assigning waveforms to left, right, or disabled groups.
 - Channel selector for showing or hiding enabled waveforms.
 - Toolbar controls for active Y axis group, zoom axis, and renderer selection.
 - Main waveform plot with X pan/zoom and active-axis Y pan/zoom.
@@ -63,7 +63,7 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 | Clear waveform highlight | left-click empty plot space |
 | Toolbar zoom | choose `X` or `Y`, then use `+` / `-` |
 | Reset view | `Ctrl+R` / `Cmd+R` or `Reset View` toolbar button |
-| Configure waveform axis groups | `Axis Groups...` toolbar button |
+| Configure waveform setup | `Waveform Setup...` toolbar button |
 | Select renderer | `Renderer` toolbar dropdown (`CPU` / `OpenGL`) |
 | Toggle X cursors | `X` or `X cursors` checkbox |
 | Toggle Y cursors | `Y` or `Y cursors` checkbox |
@@ -71,6 +71,23 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 | Reset cursors | `Shift+R` or `Reset Cursors` button in the Cursors tab |
 
 When `Y` is selected in the toolbar zoom control, zoom buttons apply to the currently active Y control group. Press `T` or use the `Y group` dropdown to switch that active group between left and right. Cursor axis group is controlled separately in the Cursors tab, so switching active Y control does not move existing cursors.
+
+## Waveform Setup
+
+Waveform Setup opens after loading a waveform file and is also available from the toolbar. It controls the X-axis time base and each waveform's Y-axis assignment.
+
+Time-base options:
+
+| Mode | Behavior |
+| --- | --- |
+| `Time column` | Uses a selected numeric column as the X axis. The column must be finite, strictly increasing, and uniformly spaced. The selected time column is not plotted as a signal. |
+| `Sample rate (Sa/s)` | Generates time as `sample_index / sample_rate`. All valid numeric columns, including any detected time column, are treated as normal signals. |
+| `Sample interval (s/pt)` | Generates time as `sample_index * sample_interval`. All valid numeric columns, including any detected time column, are treated as normal signals. |
+| `Sample index` | Uses `0, 1, 2, ...` as the X axis. All valid numeric columns are treated as normal signals. |
+
+If a file has a detected time column, you can still override it with a generated time base. In that case, the detected time column becomes a normal signal that can be assigned to an axis or disabled like any other waveform.
+
+The waveform table assigns each signal to the left axis, right axis, or disabled state, and lets you edit axis units and initial Y ranges.
 
 ## Math
 

@@ -52,6 +52,9 @@ class WaveformData:
     source_path: Path
     time_column: str | None = None
     sheet_name: str | None = None
+    time_candidates: dict[str, np.ndarray] | None = None
+    timebase_kind: str = "sample_index"
+    timebase_value: float | None = None
 
 
 def load_csv_waveform(
@@ -160,6 +163,11 @@ def _waveform_from_frame(
         source_path=source_path,
         time_column=time_column,
         sheet_name=sheet_name,
+        time_candidates={
+            name: numeric_columns[name].astype(float)
+            for name in valid_columns
+        },
+        timebase_kind="column" if time_column is not None else "sample_index",
     )
 
 
