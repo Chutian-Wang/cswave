@@ -22,7 +22,7 @@ from plot_widgets import AxisGroupSettings, SpectrumPlot, WaveformPlot
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("CSV Waveform Viewer")
+        self.setWindowTitle("cswave")
         self.resize(1280, 820)
         self.data: WaveformData | None = None
         self.source_data: WaveformData | None = None

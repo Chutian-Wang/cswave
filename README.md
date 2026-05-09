@@ -1,6 +1,6 @@
 # CSV Waveform Viewer
 
-A Python desktop waveform viewer for numeric CSV files, built with codex, PySide6 and pyqtgraph. There may be undiscovered bugs so feel free to leave issue cards on GitHub!
+A Python desktop waveform viewer for CSV and xls files, built with codex, PySide6 and pyqtgraph. There may be undiscovered bugs so feel free to leave issue cards on GitHub!
 
 ## Setup
 
@@ -22,7 +22,7 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 
 - CSV/XLS/XLSX loading with automatic time-base detection and numeric channel filtering.
 - Sheet selection for Excel files with multiple sheets.
-- Oscilloscope-style channel colors.
+- Oscilloscope-style visuals.
 - Dual Y axes with independent left/right Y ranges.
 - Automatic default grouping:
   - voltage channels (`V`) on the left axis
@@ -38,12 +38,39 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 - Preview highlight region controls the main X range after mouse release.
 - Mouse wheel on the preview zooms the preview time scale while preserving the highlighted region's visual footprint.
 - Optional OpenGL renderer, selectable from the toolbar or at startup with `CSWAVE_OPENGL=1`.
-- Movable dashed X and Y cursors with on-plot labels, position, delta, and active-channel interpolated values.
+- Movable X and Y cursors with on-plot labels, position, delta, and active-channel interpolated values.
 - Cursor labels can be dragged directly to move the corresponding cursor.
 - Cursor axis group selector, with active-channel choices filtered to the cursor group.
 - Grouped cursor readouts for X positions, Y positions, and active-channel values.
 - Reset Cursors button/shortcut to move cursors to the active Y group and current screen center.
 - Math tab for calculated traces and FFT spectrum analysis.
+
+## Shortcuts And Controls
+
+| Action | Control |
+| --- | --- |
+| Open waveform | `Ctrl+O` / `Cmd+O` |
+| Toggle active Y control group | `T` |
+| Select active Y control group | `Y group` toolbar dropdown |
+| Pan X | drag on main plot |
+| Pan active Y axis | `Ctrl` + drag on main plot |
+| Free-pan highlighted trace | click a waveform, then drag on main plot |
+| Zoom X | mouse wheel on main plot |
+| Zoom active Y axis | `Ctrl` + mouse wheel on main plot |
+| Preview time zoom | mouse wheel on preview bar |
+| Preview range selection | drag/release the highlighted preview region |
+| Highlight waveform | left-click a visible waveform |
+| Clear waveform highlight | left-click empty plot space |
+| Toolbar zoom | choose `X` or `Y`, then use `+` / `-` |
+| Reset view | `Ctrl+R` / `Cmd+R` or `Reset View` toolbar button |
+| Configure waveform axis groups | `Axis Groups...` toolbar button |
+| Select renderer | `Renderer` toolbar dropdown (`CPU` / `OpenGL`) |
+| Toggle X cursors | `X` or `X cursors` checkbox |
+| Toggle Y cursors | `Y` or `Y cursors` checkbox |
+| Move cursor | drag the dashed cursor line or its label |
+| Reset cursors | `Shift+R` or `Reset Cursors` button in the Cursors tab |
+
+When `Y` is selected in the toolbar zoom control, zoom buttons apply to the currently active Y control group. Press `T` or use the `Y group` dropdown to switch that active group between left and right. Cursor axis group is controlled separately in the Cursors tab, so switching active Y control does not move existing cursors.
 
 ## Math
 
@@ -93,30 +120,3 @@ Spectrum view:
 - Hover near a spectral peak to show frequency and energy.
 
 Clicking an item in the Math output list switches to its corresponding view. Calculated waveform outputs switch to `Waveforms` and highlight the trace; FFT outputs switch to `Spectrum`.
-
-## Shortcuts And Controls
-
-| Action | Control |
-| --- | --- |
-| Open waveform | `Ctrl+O` / `Cmd+O` |
-| Toggle active Y control group | `T` |
-| Select active Y control group | `Y group` toolbar dropdown |
-| Pan X | drag on main plot |
-| Pan active Y axis | `Ctrl` + drag on main plot |
-| Free-pan highlighted trace | click a waveform, then drag on main plot |
-| Zoom X | mouse wheel on main plot |
-| Zoom active Y axis | `Ctrl` + mouse wheel on main plot |
-| Preview time zoom | mouse wheel on preview bar |
-| Preview range selection | drag/release the highlighted preview region |
-| Highlight waveform | left-click a visible waveform |
-| Clear waveform highlight | left-click empty plot space |
-| Toolbar zoom | choose `X` or `Y`, then use `+` / `-` |
-| Reset view | `Ctrl+R` / `Cmd+R` or `Reset View` toolbar button |
-| Configure waveform axis groups | `Axis Groups...` toolbar button |
-| Select renderer | `Renderer` toolbar dropdown (`CPU` / `OpenGL`) |
-| Toggle X cursors | `X` or `X cursors` checkbox |
-| Toggle Y cursors | `Y` or `Y cursors` checkbox |
-| Move cursor | drag the dashed cursor line or its label |
-| Reset cursors | `Shift+R` or `Reset Cursors` button in the Cursors tab |
-
-When `Y` is selected in the toolbar zoom control, zoom buttons apply to the currently active Y control group. Press `T` or use the `Y group` dropdown to switch that active group between left and right. Cursor axis group is controlled separately in the Cursors tab, so switching active Y control does not move existing cursors.
