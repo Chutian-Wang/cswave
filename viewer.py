@@ -18,6 +18,7 @@ from math_engine import (
     default_result_name,
 )
 from PySide6 import QtCore, QtGui, QtWidgets
+from app_theme import apply_dark_theme, apply_system_theme
 from plot_widgets import AxisGroupSettings, SpectrumPlot, WaveformPlot
 
 
@@ -589,6 +590,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_renderer_selector()
         self.renderer_selector.currentIndexChanged.connect(self._renderer_changed)
         toolbar.addWidget(self.renderer_selector)
+        self.force_dark_mode = QtWidgets.QCheckBox(self.tr("Force dark"))
+        self.force_dark_mode.setToolTip(self.tr("Use a dark application theme instead of the system theme"))
+        self.force_dark_mode.toggled.connect(self._force_dark_mode_changed)
+        toolbar.addWidget(self.force_dark_mode)
         toolbar.addWidget(_toolbar_field_label(self.tr("Language")))
         self.language_selector = QtWidgets.QComboBox()
         self.language_selector.addItem("System", "system")
@@ -713,6 +718,15 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self._sync_renderer_selector()
         QtWidgets.QMessageBox.warning(self, self.tr("Renderer unavailable"), self.tr("OpenGL rendering is not available on this system."))
+
+    def _force_dark_mode_changed(self, enabled: bool) -> None:
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            return
+        if enabled:
+            apply_dark_theme(app)
+        else:
+            apply_system_theme(app)
 
     def _sync_language_selector(self) -> None:
         if not hasattr(self, "language_selector"):

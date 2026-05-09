@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from viewer import AxisSetupDialog, MainWindow, TimebaseSettings, _time_column_validation, _waveform_with_timebase
 
 
@@ -194,6 +194,22 @@ def test_language_selection_restarts_with_selected_language(tmp_path: Path, monk
     assert starts[0][1][1:3] == ["--language", "zh_CN"]
     assert str(window.source_data.source_path) in starts[0][1]
     assert quits == [True]
+
+
+def test_force_dark_mode_toggle_changes_application_palette(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    assert window.force_dark_mode.isChecked() is False
+
+    window.force_dark_mode.setChecked(True)
+    dark_window = app.palette().color(QtGui.QPalette.ColorRole.Window)
+
+    assert dark_window.lightness() < 80
+
+    window.force_dark_mode.setChecked(False)
 
 
 def test_load_file_schedules_waveform_setup(tmp_path: Path) -> None:

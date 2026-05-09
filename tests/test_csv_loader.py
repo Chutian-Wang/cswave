@@ -13,7 +13,7 @@ import pandas as pd
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from csv_loader import excel_sheet_names, load_csv_waveform, load_waveform
-from PySide6 import QtWidgets
+from PySide6 import QtGui, QtWidgets
 
 
 def write_csv(path: Path, content: str) -> Path:
@@ -133,6 +133,21 @@ def test_default_translation_uses_system_locale_in_subprocess() -> None:
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == ["zh_CN", "zh_CN"]
+
+
+def test_dark_theme_sets_dark_qt_palette() -> None:
+    from app_theme import apply_dark_theme, apply_system_theme
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    apply_dark_theme(app)
+    palette = app.palette()
+    window = palette.color(QtGui.QPalette.ColorRole.Window)
+    base = palette.color(QtGui.QPalette.ColorRole.Base)
+
+    assert window.lightness() < 80
+    assert base.lightness() < 60
+    apply_system_theme(app)
 
 
 def test_chinese_and_japanese_translations_load_in_subprocess() -> None:
