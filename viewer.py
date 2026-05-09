@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 
 import numpy as np
 
@@ -131,7 +132,6 @@ class ChannelsPanel(QtWidgets.QWidget):
         self.channel_layout = QtWidgets.QVBoxLayout(self)
         self.channel_layout.setContentsMargins(8, 8, 8, 8)
         self.channel_layout.setSpacing(6)
-        self.channel_layout.addWidget(QtWidgets.QLabel(self.tr("Channels")))
         self.channel_layout.addStretch()
 
 
@@ -372,10 +372,11 @@ class MeasurePanel(QtWidgets.QWidget):
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, *, startup_language: str = "system") -> None:
         super().__init__()
         self.setWindowTitle("cswave")
         self.resize(1280, 820)
+        self.startup_language = _normalized_startup_language(startup_language)
         self.data: WaveformData | None = None
         self.source_data: WaveformData | None = None
         self.calculated_channels: list[ChannelData] = []
@@ -588,6 +589,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_renderer_selector()
         self.renderer_selector.currentIndexChanged.connect(self._renderer_changed)
         toolbar.addWidget(self.renderer_selector)
+        toolbar.addWidget(_toolbar_field_label(self.tr("Language")))
+        self.language_selector = QtWidgets.QComboBox()
+        self.language_selector.addItem("System", "system")
+        self.language_selector.addItem("English", "en")
+        self.language_selector.addItem("中文", "zh_CN")
+        self.language_selector.addItem("日本語", "ja_JP")
+        self.language_selector.setToolTip(self.tr("Change the startup language and restart the app"))
+        self.language_selector.setMinimumContentsLength(8)
+        self._sync_language_selector()
+        self.language_selector.currentIndexChanged.connect(self._language_changed)
+        toolbar.addWidget(self.language_selector)
 
     def _open_dialog(self) -> None:
         path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
@@ -702,6 +714,42 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_renderer_selector()
         QtWidgets.QMessageBox.warning(self, self.tr("Renderer unavailable"), self.tr("OpenGL rendering is not available on this system."))
 
+    def _sync_language_selector(self) -> None:
+        if not hasattr(self, "language_selector"):
+            return
+        index = self.language_selector.findData(self.startup_language)
+        if index < 0:
+            index = self.language_selector.findData("system")
+        self.language_selector.blockSignals(True)
+        self.language_selector.setCurrentIndex(max(index, 0))
+        self.language_selector.blockSignals(False)
+
+    def _language_changed(self) -> None:
+        language = self.language_selector.currentData()
+        if language == self.startup_language:
+            return
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            self.tr("Restart Required"),
+            self.tr("Restart now to apply the selected language?"),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.Yes,
+        )
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            self._sync_language_selector()
+            return
+        self._restart_with_language(language)
+
+    def _restart_with_language(self, language: str) -> None:
+        arguments = [str(Path(sys.argv[0]).resolve()), "--language", language]
+        if self.source_data is not None:
+            arguments.append(str(self.source_data.source_path))
+        if QtCore.QProcess.startDetached(sys.executable, arguments):
+            QtWidgets.QApplication.quit()
+            return
+        QtWidgets.QMessageBox.warning(self, self.tr("Restart Failed"), self.tr("Could not restart the application."))
+        self._sync_language_selector()
+
     def _build_shortcuts(self) -> None:
         toggle_axis = QtGui.QShortcut(QtGui.QKeySequence("T"), self)
         toggle_axis.activated.connect(self._toggle_axis_group)
@@ -743,8 +791,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._open_waveform_setup()
 
     def _rebuild_channels(self, channels: list[ChannelData]) -> None:
-        while self.channel_layout.count() > 2:
-            item = self.channel_layout.takeAt(1)
+        while self.channel_layout.count() > 1:
+            item = self.channel_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
@@ -1367,6 +1415,12 @@ def _format_value(value: float | None) -> str:
     if value is None:
         return "-"
     return f"{value:.8g}"
+
+
+def _normalized_startup_language(language: str | None) -> str:
+    if language is None or language.strip().lower() in {"", "system", "auto"}:
+        return "system"
+    return language.replace("-", "_")
 
 
 def _default_axis_group_for_channel(channel: ChannelData) -> str:

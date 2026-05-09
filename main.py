@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     app = QtWidgets.QApplication(sys.argv)
     install_translator(app, args.language)
-    window = MainWindow()
+    window = MainWindow(startup_language=args.language or "system")
     if args.csv:
         window.load_file(args.csv, show_setup=True)
     window.show()

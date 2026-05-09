@@ -150,6 +150,8 @@ python main.py --language zh_CN example_csv/1t1r_set_read_0P1V.csv
 
 Use `--language system` to explicitly request the system language.
 
+The `Display` toolbar section also has a `Language` selector. Choosing a different language prompts for a restart and relaunches the app with the selected startup locale.
+
 Translation files live in `translations/`:
 
 - `cswave_en.ts` is the English reference catalog.

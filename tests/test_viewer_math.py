@@ -155,6 +155,11 @@ def test_english_fallback_labels_and_stable_combo_ids(tmp_path: Path) -> None:
     assert window.measure_range.itemText(0) == "Full waveform"
     assert window.axis_group_selector.itemData(0) == "left"
     assert window.axis_group_selector.itemData(1) == "right"
+    assert window.language_selector.currentData() == "system"
+    assert window.language_selector.findData("zh_CN") >= 0
+    assert window.language_selector.itemText(window.language_selector.findData("en")) == "English"
+    assert window.language_selector.itemText(window.language_selector.findData("zh_CN")) == "中文"
+    assert window.language_selector.itemText(window.language_selector.findData("ja_JP")) == "日本語"
 
     dialog = AxisSetupDialog(
         window.data,
@@ -166,6 +171,29 @@ def test_english_fallback_labels_and_stable_combo_ids(tmp_path: Path) -> None:
     assert group_combo.itemData(0) == "left"
     assert group_combo.itemData(1) == "right"
     assert group_combo.itemData(2) == "disabled"
+
+
+def test_language_selection_restarts_with_selected_language(tmp_path: Path, monkeypatch) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow(startup_language="system")
+    window.load_file(_write_wave_csv(tmp_path))
+    starts = []
+    quits = []
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "question",
+        lambda *args, **kwargs: QtWidgets.QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(QtCore.QProcess, "startDetached", lambda program, arguments: starts.append((program, arguments)) or True)
+    monkeypatch.setattr(QtWidgets.QApplication, "quit", lambda: quits.append(True))
+
+    _select_combo_data(window.language_selector, "zh_CN")
+
+    assert starts
+    assert starts[0][1][1:3] == ["--language", "zh_CN"]
+    assert str(window.source_data.source_path) in starts[0][1]
+    assert quits == [True]
 
 
 def test_load_file_schedules_waveform_setup(tmp_path: Path) -> None:
