@@ -39,7 +39,7 @@
         </message>
         <message>
             <location filename="../viewer.py" line="174" />
-            <source>Delta X</source>
+            <source>ΔX</source>
             <translation>ΔX</translation>
         </message>
         <message>
@@ -59,7 +59,7 @@
         </message>
         <message>
             <location filename="../viewer.py" line="175" />
-            <source>Delta Y</source>
+            <source>ΔY</source>
             <translation>ΔY</translation>
         </message>
         <message>
@@ -235,8 +235,8 @@
         </message>
         <message>
             <location filename="../viewer.py" line="630" />
-            <source>Force dark</source>
-            <translation>ダーク固定</translation>
+            <source>Force look</source>
+            <translation>外観を固定</translation>
         </message>
         <message>
             <location filename="../viewer.py" line="609" />
@@ -286,8 +286,8 @@
         </message>
         <message>
             <location filename="../viewer.py" line="632" />
-            <source>Force dark mode display (may affect how the app looks)</source>
-            <translation>ダークモード表示を強制します（アプリの外観に影響する場合があります）</translation>
+            <source>Force the app style instead of using the system look</source>
+            <translation>システムの外観ではなくアプリのスタイルを強制します</translation>
         </message>
         <message>
             <location filename="../viewer.py" line="640" />

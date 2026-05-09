@@ -129,6 +129,31 @@ def test_right_panel_restore_tab_shows_when_side_panel_collapsed(tmp_path: Path)
     assert window.side_panel_restore_tab.isVisible() is False
 
 
+def test_right_panel_forms_expand_fields_across_platforms(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    math_panel = window.side_tabs.widget(2)
+    builder = math_panel.layout().itemAt(0).widget()
+    spectrum_range = math_panel.layout().itemAt(1).widget()
+    measure_panel = window.side_tabs.widget(3)
+    measure_controls = measure_panel.layout().itemAt(0).widget()
+    expected_policy = QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+
+    assert builder.layout().fieldGrowthPolicy() == expected_policy
+    assert spectrum_range.layout().fieldGrowthPolicy() == expected_policy
+    assert measure_controls.layout().fieldGrowthPolicy() == expected_policy
+    assert window.math_function.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
+    assert window.math_operand_a.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
+    assert window.pick_operand_a.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
+    assert window.math_operand_a.parentWidget().layout().itemAt(0).alignment() == QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert window.math_operand_a.parentWidget().layout().itemAt(1).alignment() == QtCore.Qt.AlignmentFlag.AlignVCenter
+    assert window.measure_channel.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
+    assert window.measure_channel.parentWidget().layout().itemAt(1).alignment() == QtCore.Qt.AlignmentFlag.AlignVCenter
+
+
 def test_spectrum_range_only_visible_for_fft(tmp_path: Path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app
@@ -161,6 +186,8 @@ def test_english_fallback_labels_and_stable_combo_ids(tmp_path: Path) -> None:
     assert window.language_actions["en"].text() == "English"
     assert window.language_actions["zh_CN"].text() == "\u4e2d\u6587"
     assert window.language_actions["ja_JP"].text() == "\u65e5\u672c\u8a9e"
+    assert window.force_dark_mode_action.text() == "Force look"
+    assert window.force_dark_mode_action.toolTip() == "Force the app style instead of using the system look"
 
     dialog = AxisSetupDialog(
         window.data,

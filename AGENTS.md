@@ -158,7 +158,7 @@ The native Qt menu bar is organized as:
 - File: `Open Waveform`
 - View: `Reset View`, `Waveform Setup...`
 - Navigate: `Y group`, `Zoom` axis selection, `Zoom In`, `Zoom Out`
-- Display: `Renderer` (`CPU` / `OpenGL`), `Language`, `Force dark`
+- Display: `Renderer` (`CPU` / `OpenGL`), `Language`, `Force look`
 
 Shortcuts:
 

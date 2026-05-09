@@ -40,7 +40,7 @@
     </message>
     <message>
         <location filename="../viewer.py" line="174"/>
-        <source>Delta X</source>
+        <source>ΔX</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -60,7 +60,7 @@
     </message>
     <message>
         <location filename="../viewer.py" line="175"/>
-        <source>Delta Y</source>
+        <source>ΔY</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -236,7 +236,7 @@
     </message>
     <message>
         <location filename="../viewer.py" line="630"/>
-        <source>Force dark</source>
+        <source>Force look</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -287,7 +287,7 @@
     </message>
     <message>
         <location filename="../viewer.py" line="632"/>
-        <source>Force dark mode display (may affect how the app looks)</source>
+        <source>Force the app style instead of using the system look</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

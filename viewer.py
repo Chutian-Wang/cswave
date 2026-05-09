@@ -119,12 +119,40 @@ class VerticalTextButton(QtWidgets.QPushButton):
 
 def _operand_picker_row(combo: QtWidgets.QComboBox, button: QtWidgets.QPushButton) -> QtWidgets.QWidget:
     row = QtWidgets.QWidget()
+    row.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
     layout = QtWidgets.QHBoxLayout(row)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(6)
-    layout.addWidget(combo, stretch=1)
-    layout.addWidget(button)
+    layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter)
+    _expand_horizontally(combo)
+    _keep_button_to_hint(button)
+    layout.addWidget(combo, stretch=1, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+    layout.addWidget(button, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
     return row
+
+
+def _configure_panel_form(form: QtWidgets.QFormLayout) -> None:
+    form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
+    form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+    form.setFormAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop)
+    form.setHorizontalSpacing(10)
+    form.setVerticalSpacing(8)
+
+
+def _expand_horizontally(widget: QtWidgets.QWidget) -> None:
+    policy = widget.sizePolicy()
+    policy.setHorizontalPolicy(QtWidgets.QSizePolicy.Policy.Expanding)
+    widget.setSizePolicy(policy)
+    if isinstance(widget, QtWidgets.QComboBox):
+        widget.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        widget.setMinimumContentsLength(10)
+
+
+def _keep_button_to_hint(button: QtWidgets.QAbstractButton) -> None:
+    policy = button.sizePolicy()
+    policy.setHorizontalPolicy(QtWidgets.QSizePolicy.Policy.Fixed)
+    button.setSizePolicy(policy)
 
 
 class ChannelsPanel(QtWidgets.QWidget):
@@ -162,17 +190,20 @@ class CursorPanel(QtWidgets.QWidget):
         controls_layout.addWidget(x_cursor_toggle, 0, 0)
         controls_layout.addWidget(y_cursor_toggle, 0, 1)
         reset_cursors = QtWidgets.QPushButton(self.tr("Reset Cursors"))
+        _expand_horizontally(reset_cursors)
         reset_cursors.clicked.connect(reset_callback)
         controls_layout.addWidget(reset_cursors, 1, 0, 1, 2)
+        _expand_horizontally(cursor_axis_selector)
         controls_layout.addWidget(QtWidgets.QLabel(self.tr("Cursor group")), 2, 0)
         controls_layout.addWidget(cursor_axis_selector, 2, 1)
+        _expand_horizontally(active_channel)
         controls_layout.addWidget(QtWidgets.QLabel(self.tr("Active channel")), 3, 0)
         controls_layout.addWidget(active_channel, 3, 1)
         controls_layout.setColumnStretch(1, 1)
         layout.addWidget(controls)
 
-        layout.addWidget(self._value_group(self.tr("X Positions"), [(self.tr("X1"), "X1"), (self.tr("X2"), "X2"), (self.tr("Delta X"), "dX")]))
-        layout.addWidget(self._value_group(self.tr("Y Positions"), [(self.tr("Y1"), "Y1"), (self.tr("Y2"), "Y2"), (self.tr("Delta Y"), "dY")]))
+        layout.addWidget(self._value_group(self.tr("X Positions"), [(self.tr("X1"), "X1"), (self.tr("X2"), "X2"), (self.tr("ΔX"), "dX")]))
+        layout.addWidget(self._value_group(self.tr("Y Positions"), [(self.tr("Y1"), "Y1"), (self.tr("Y2"), "Y2"), (self.tr("ΔY"), "dY")]))
         layout.addWidget(
             self._value_group(
                 self.tr("Active Channel"),
@@ -221,11 +252,13 @@ class MathPanel(QtWidgets.QWidget):
         builder = QtWidgets.QGroupBox(self.tr("Builder"))
         form = QtWidgets.QFormLayout(builder)
         form.setContentsMargins(8, 8, 8, 8)
+        _configure_panel_form(form)
 
         self.math_function = QtWidgets.QComboBox()
         for function in MATH_FUNCTIONS:
             self.math_function.addItem(function.label, function.id)
         self.math_function.currentIndexChanged.connect(function_changed)
+        _expand_horizontally(self.math_function)
         form.addRow(self.tr("Function"), self.math_function)
 
         self.math_operand_a = QtWidgets.QComboBox()
@@ -250,6 +283,7 @@ class MathPanel(QtWidgets.QWidget):
         for window in WINDOW_FUNCTIONS:
             self.fft_window.addItem(window.label, window.id)
         self.fft_window_label = QtWidgets.QLabel(self.tr("Window"))
+        _expand_horizontally(self.fft_window)
         form.addRow(self.fft_window_label, self.fft_window)
 
         self.fft_remove_dc = QtWidgets.QCheckBox(self.tr("Remove DC offset"))
@@ -262,9 +296,11 @@ class MathPanel(QtWidgets.QWidget):
             self.tr("Adds zeros after the selected waveform segment to create denser FFT bins. Does not improve true frequency resolution.")
         )
         self.fft_zero_pad_label = QtWidgets.QLabel(self.tr("Zero pad"))
+        _expand_horizontally(self.fft_zero_pad)
         form.addRow(self.fft_zero_pad_label, self.fft_zero_pad)
 
         self.math_result_name = QtWidgets.QLineEdit()
+        _expand_horizontally(self.math_result_name)
         form.addRow(self.tr("Name"), self.math_result_name)
 
         buttons = QtWidgets.QWidget()
@@ -274,17 +310,23 @@ class MathPanel(QtWidgets.QWidget):
         add_button.clicked.connect(add_output)
         self.update_fft_button = QtWidgets.QPushButton(self.tr("Update FFT"))
         self.update_fft_button.clicked.connect(update_fft)
-        buttons_layout.addWidget(add_button)
-        buttons_layout.addWidget(self.update_fft_button)
+        _expand_horizontally(add_button)
+        _expand_horizontally(self.update_fft_button)
+        buttons_layout.addWidget(add_button, stretch=1)
+        buttons_layout.addWidget(self.update_fft_button, stretch=1)
         form.addRow(buttons)
         layout.addWidget(builder)
 
         self.spectrum_range_box = QtWidgets.QGroupBox(self.tr("Spectrum Range"))
         spectrum_form = QtWidgets.QFormLayout(self.spectrum_range_box)
         spectrum_form.setContentsMargins(8, 8, 8, 8)
+        _configure_panel_form(spectrum_form)
         self.frequency_min = QtWidgets.QLineEdit()
         self.frequency_max = QtWidgets.QLineEdit()
         apply_frequency = QtWidgets.QPushButton(self.tr("Apply Frequency Range"))
+        _expand_horizontally(self.frequency_min)
+        _expand_horizontally(self.frequency_max)
+        _expand_horizontally(apply_frequency)
         apply_frequency.clicked.connect(apply_frequency_range)
         spectrum_form.addRow(self.tr("Min Hz"), self.frequency_min)
         spectrum_form.addRow(self.tr("Max Hz"), self.frequency_max)
@@ -298,6 +340,7 @@ class MathPanel(QtWidgets.QWidget):
         self.math_outputs.currentTextChanged.connect(output_selected)
         self.math_outputs.itemClicked.connect(lambda item: output_selected(item.text()))
         remove_button = QtWidgets.QPushButton(self.tr("Remove"))
+        _expand_horizontally(remove_button)
         remove_button.clicked.connect(remove_output)
         outputs_layout.addWidget(self.math_outputs)
         outputs_layout.addWidget(remove_button)
@@ -321,6 +364,7 @@ class MeasurePanel(QtWidgets.QWidget):
         controls = QtWidgets.QGroupBox(self.tr("Measure"))
         form = QtWidgets.QFormLayout(controls)
         form.setContentsMargins(8, 8, 8, 8)
+        _configure_panel_form(form)
         self.measure_channel = QtWidgets.QComboBox()
         self.measure_channel.currentIndexChanged.connect(update_measurements)
         self.pick_measure_channel = QtWidgets.QPushButton(self.tr("Pick"))
@@ -331,6 +375,7 @@ class MeasurePanel(QtWidgets.QWidget):
         self.measure_range.addItem(self.tr("Full waveform"), "full")
         self.measure_range.addItem(self.tr("Between X cursors"), "cursors")
         self.measure_range.currentIndexChanged.connect(update_measurements)
+        _expand_horizontally(self.measure_range)
         form.addRow(self.tr("Waveform"), _operand_picker_row(self.measure_channel, self.pick_measure_channel))
         form.addRow(self.tr("Range"), self.measure_range)
         layout.addWidget(controls)
@@ -627,9 +672,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.language_actions[language] = action
         self._sync_language_selector()
         display_menu.addSeparator()
-        self.force_dark_mode_action = display_menu.addAction(self.tr("Force dark"))
+        self.force_dark_mode_action = display_menu.addAction(self.tr("Force look"))
         self.force_dark_mode_action.setCheckable(True)
-        self.force_dark_mode_action.setToolTip(self.tr("Force dark mode display (may affect how the app looks)"))
+        self.force_dark_mode_action.setToolTip(self.tr("Force the app style instead of using the system look"))
         self.force_dark_mode_action.toggled.connect(self._force_dark_mode_changed)
 
     def _open_dialog(self) -> None:
