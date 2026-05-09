@@ -27,6 +27,90 @@ class TimebaseSettings:
     value: float | None = None
 
 
+class DetachedTabWindow(QtWidgets.QDialog):
+    def __init__(
+        self,
+        tab_widget: DetachableTabWidget,
+        widget: QtWidgets.QWidget,
+        title: str,
+        index: int,
+    ) -> None:
+        super().__init__(tab_widget.window())
+        self._tab_widget = tab_widget
+        self._widget = widget
+        self._title = title
+        self._index = index
+        self._reattached = False
+        self.setWindowTitle(title)
+        self.resize(360, 620)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        widget.setParent(self)
+        layout.addWidget(widget)
+        widget.show()
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        self.reattach()
+        event.accept()
+
+    def reattach(self) -> None:
+        if self._reattached:
+            return
+        self._reattached = True
+        self.layout().removeWidget(self._widget)
+        self._widget.hide()
+        self._tab_widget.reattach_tab(self._widget, self._title, self._index)
+
+
+class DetachableTabWidget(QtWidgets.QTabWidget):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._detached_windows: dict[QtWidgets.QWidget, DetachedTabWindow] = {}
+        self.tabBarDoubleClicked.connect(self.detach_tab)
+
+    def detach_tab(self, index: int) -> None:
+        if index < 0:
+            return
+        widget = self.widget(index)
+        if widget is None or widget in self._detached_windows:
+            return
+        title = self.tabText(index)
+        self.removeTab(index)
+        window = DetachedTabWindow(self, widget, title, index)
+        self._detached_windows[widget] = window
+        window.show()
+
+    def reattach_tab(self, widget: QtWidgets.QWidget, title: str, index: int) -> None:
+        self._detached_windows.pop(widget, None)
+        insert_at = min(index, self.count())
+        self.insertTab(insert_at, widget, title)
+        self.setCurrentWidget(widget)
+        widget.show()
+
+
+class VerticalTextButton(QtWidgets.QPushButton):
+    def __init__(self, text: str, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
+
+    def sizeHint(self) -> QtCore.QSize:
+        base = super().sizeHint()
+        return QtCore.QSize(max(24, base.height() + 8), max(84, base.width() + 24))
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        _ = event
+        option = QtWidgets.QStyleOptionButton()
+        self.initStyleOption(option)
+        option.text = ""
+        painter = QtGui.QPainter(self)
+        self.style().drawControl(QtWidgets.QStyle.ControlElement.CE_PushButton, option, painter, self)
+        painter.setPen(self.palette().buttonText().color())
+        painter.translate(self.width() / 2, self.height() / 2)
+        painter.rotate(-90)
+        text_rect = QtCore.QRectF(-self.height() / 2, -self.width() / 2, self.height(), self.width())
+        painter.drawText(text_rect, QtCore.Qt.AlignmentFlag.AlignCenter, self.text())
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -38,14 +122,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectra: dict[str, SpectrumData] = {}
         self.channel_checks: dict[str, QtWidgets.QCheckBox] = {}
         self.last_cursor_channel_by_group: dict[str, str] = {}
-        self.pending_math_operand_pick: str | None = None
+        self.pending_waveform_pick: str | None = None
         self._waveform_setup_pending = False
 
         self.waveform_plot = WaveformPlot()
         self.spectrum_plot = SpectrumPlot()
-        self.waveform_plot.cursorChanged.connect(self._update_cursor_panel)
+        self.waveform_plot.cursorChanged.connect(self._waveform_cursors_changed)
         self.waveform_plot.activeAxisGroupChanged.connect(self._sync_axis_group_selector)
-        self.waveform_plot.traceClicked.connect(self._math_waveform_picked)
+        self.waveform_plot.traceClicked.connect(self._waveform_picked)
 
         self.channel_panel = QtWidgets.QWidget()
         self.channel_layout = QtWidgets.QVBoxLayout(self.channel_panel)
@@ -70,27 +154,37 @@ class MainWindow(QtWidgets.QMainWindow):
         }
         cursor_panel = self._build_cursor_panel()
         math_panel = self._build_math_panel()
+        measure_panel = self._build_measure_panel()
 
-        side_tabs = QtWidgets.QTabWidget()
-        side_tabs.addTab(self._scroll_area(self.channel_panel), "Channels")
-        side_tabs.addTab(cursor_panel, "Cursors")
-        side_tabs.addTab(math_panel, "Math")
-        side_tabs.setMinimumWidth(260)
+        self.side_tabs = DetachableTabWidget()
+        self.side_tabs.addTab(self._scroll_area(self.channel_panel), "Channels")
+        self.side_tabs.addTab(cursor_panel, "Cursors")
+        self.side_tabs.addTab(math_panel, "Math")
+        self.side_tabs.addTab(measure_panel, "Measure")
+        self.side_tabs.setMinimumWidth(260)
 
         self.plot_tabs = QtWidgets.QTabWidget()
         self.plot_tabs.addTab(self.waveform_plot, "Waveforms")
         self.plot_tabs.addTab(self.spectrum_plot, "Spectrum")
 
-        splitter = QtWidgets.QSplitter()
-        splitter.addWidget(self.plot_tabs)
-        splitter.addWidget(side_tabs)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 0)
-        self.setCentralWidget(splitter)
+        self.splitter = QtWidgets.QSplitter()
+        self.splitter.addWidget(self.plot_tabs)
+        self.splitter.addWidget(self.side_tabs)
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 0)
+        self.splitter.splitterMoved.connect(self._update_side_panel_restore_tab)
+        self.setCentralWidget(self.splitter)
+
+        self.side_panel_restore_tab = VerticalTextButton("^ Panel ^", self)
+        self.side_panel_restore_tab.setToolTip("Restore right panel")
+        self.side_panel_restore_tab.setFixedSize(self.side_panel_restore_tab.sizeHint())
+        self.side_panel_restore_tab.clicked.connect(self._restore_side_panel)
+        self.side_panel_restore_tab.hide()
 
         self.statusBar().showMessage("Load a waveform file to begin")
         self._build_actions()
         self._build_shortcuts()
+        self._update_side_panel_restore_tab()
 
     def load_file(self, path: str | Path, *, sheet_name: str | None = None, show_setup: bool = False) -> None:
         selected_sheet = sheet_name
@@ -108,6 +202,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._rebuild_channels(data.channels)
         self._rebuild_active_channel(data.channels)
         self._sync_math_controls()
+        self._sync_measure_controls()
         self._sync_math_outputs()
         self._sync_cursor_axis_selector()
         ignored = f" Ignored {len(data.ignored_columns)} column(s)." if data.ignored_columns else ""
@@ -234,6 +329,36 @@ class MainWindow(QtWidgets.QMainWindow):
             self.spectrum_plot.reset_view()
             return
         self.waveform_plot.reset_view()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._position_side_panel_restore_tab()
+
+    def _restore_side_panel(self) -> None:
+        width = max(self.splitter.width(), 1)
+        panel_width = min(320, max(260, width // 4))
+        self.splitter.setSizes([max(width - panel_width, 1), panel_width])
+        self._update_side_panel_restore_tab()
+
+    def _update_side_panel_restore_tab(self, *_args: object) -> None:
+        if not hasattr(self, "side_panel_restore_tab"):
+            return
+        sizes = self.splitter.sizes()
+        layout_ready = len(sizes) > 1 and sum(sizes) > 0 and self.splitter.isVisible()
+        hidden = layout_ready and sizes[1] <= 8
+        self.side_panel_restore_tab.setVisible(hidden)
+        if hidden:
+            self._position_side_panel_restore_tab()
+            self.side_panel_restore_tab.raise_()
+
+    def _position_side_panel_restore_tab(self) -> None:
+        if not hasattr(self, "side_panel_restore_tab"):
+            return
+        margin = 0
+        x = max(self.width() - self.side_panel_restore_tab.width() - margin, 0)
+        available_height = max(self.height() - self.statusBar().height(), self.side_panel_restore_tab.height())
+        y = max((available_height - self.side_panel_restore_tab.height()) // 4, 32)
+        self.side_panel_restore_tab.move(x, y)
 
     def _sync_axis_group_selector(self, *_args: object) -> None:
         current_index = self.axis_group_selector.findData(self.waveform_plot.active_y_group)
@@ -436,8 +561,8 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow(buttons)
         layout.addWidget(builder)
 
-        spectrum = QtWidgets.QGroupBox("Spectrum Range")
-        spectrum_form = QtWidgets.QFormLayout(spectrum)
+        self.spectrum_range_box = QtWidgets.QGroupBox("Spectrum Range")
+        spectrum_form = QtWidgets.QFormLayout(self.spectrum_range_box)
         spectrum_form.setContentsMargins(8, 8, 8, 8)
         self.frequency_min = QtWidgets.QLineEdit()
         self.frequency_max = QtWidgets.QLineEdit()
@@ -446,7 +571,7 @@ class MainWindow(QtWidgets.QMainWindow):
         spectrum_form.addRow("Min Hz", self.frequency_min)
         spectrum_form.addRow("Max Hz", self.frequency_max)
         spectrum_form.addRow(apply_frequency)
-        layout.addWidget(spectrum)
+        layout.addWidget(self.spectrum_range_box)
 
         outputs = QtWidgets.QGroupBox("Outputs")
         outputs_layout = QtWidgets.QVBoxLayout(outputs)
@@ -463,6 +588,74 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._math_function_changed()
         return panel
+
+    def _build_measure_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        controls = QtWidgets.QGroupBox("Measure")
+        form = QtWidgets.QFormLayout(controls)
+        form.setContentsMargins(8, 8, 8, 8)
+        self.measure_channel = QtWidgets.QComboBox()
+        self.measure_channel.currentIndexChanged.connect(self._update_measurements)
+        self.pick_measure_channel = QtWidgets.QPushButton("Pick")
+        self.pick_measure_channel.setCheckable(True)
+        self.pick_measure_channel.setToolTip("Click, then click a waveform trace to measure it")
+        self.pick_measure_channel.clicked.connect(lambda checked: self._start_measure_pick(checked))
+        self.measure_range = QtWidgets.QComboBox()
+        self.measure_range.addItem("Full waveform", "full")
+        self.measure_range.addItem("Between X cursors", "cursors")
+        self.measure_range.currentIndexChanged.connect(self._update_measurements)
+        form.addRow("Waveform", self._operand_picker_row(self.measure_channel, self.pick_measure_channel))
+        form.addRow("Range", self.measure_range)
+        layout.addWidget(controls)
+
+        self.measure_labels = {
+            key: QtWidgets.QLabel("-")
+            for key in ("max", "min", "avg", "ptp", "rms", "acrms", "period", "frequency")
+        }
+        layout.addWidget(
+            self._measure_group_box(
+                "Vertical",
+                [
+                    ("Max", "max"),
+                    ("Min", "min"),
+                    ("Avg", "avg"),
+                    ("Peak to peak", "ptp"),
+                    ("RMS", "rms"),
+                    ("ACRMS", "acrms"),
+                ],
+            )
+        )
+        layout.addWidget(
+            self._measure_group_box(
+                "Horizontal",
+                [
+                    ("Period", "period"),
+                    ("Frequency", "frequency"),
+                ],
+            )
+        )
+        layout.addStretch()
+        return panel
+
+    def _measure_group_box(self, title: str, rows: list[tuple[str, str]]) -> QtWidgets.QGroupBox:
+        box = QtWidgets.QGroupBox(title)
+        grid = QtWidgets.QGridLayout(box)
+        grid.setContentsMargins(8, 8, 8, 8)
+        for row, (label, key) in enumerate(rows):
+            name_label = QtWidgets.QLabel(label)
+            value_label = self.measure_labels[key]
+            value_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            value_label.setMinimumWidth(110)
+            value_label.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+            grid.addWidget(name_label, row, 0)
+            grid.addWidget(value_label, row, 1)
+        grid.setColumnStretch(1, 1)
+        return box
 
     @staticmethod
     def _operand_picker_row(combo: QtWidgets.QComboBox, button: QtWidgets.QPushButton) -> QtWidgets.QWidget:
@@ -598,6 +791,11 @@ class MainWindow(QtWidgets.QMainWindow):
         for key, value in mapping.items():
             self.cursor_labels[key].setText(_format_value(value))
 
+    def _waveform_cursors_changed(self, *_args: object) -> None:
+        self._update_cursor_panel()
+        if hasattr(self, "measure_range") and self.measure_range.currentData() == "cursors":
+            self._update_measurements()
+
     def _sync_math_controls(self) -> None:
         current_a = self.math_operand_a.currentText() if hasattr(self, "math_operand_a") else ""
         current_b = self.math_operand_b.currentText() if hasattr(self, "math_operand_b") else ""
@@ -610,6 +808,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 combo.setCurrentText(current)
             combo.blockSignals(False)
         self._math_function_changed()
+        self._sync_measure_controls()
 
     def _sync_math_outputs(self) -> None:
         if not hasattr(self, "math_outputs"):
@@ -635,7 +834,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.math_operand_b_row.setVisible(is_binary)
         self.math_operand_b_label.setVisible(is_binary)
         self.pick_operand_b.setVisible(is_binary)
-        if not is_binary and self.pending_math_operand_pick == "b":
+        if not is_binary and self.pending_waveform_pick == "math_b":
             self._clear_operand_pick()
         self.fft_window.setEnabled(is_fft)
         self.fft_window.setVisible(is_fft)
@@ -644,7 +843,102 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fft_zero_pad.setVisible(is_fft)
         self.fft_zero_pad_label.setVisible(is_fft)
         self.update_fft_button.setVisible(is_fft)
+        if hasattr(self, "spectrum_range_box"):
+            self.spectrum_range_box.setVisible(is_fft)
         self._math_operand_changed()
+
+    def _sync_measure_controls(self) -> None:
+        if not hasattr(self, "measure_channel"):
+            return
+        current = self.measure_channel.currentText()
+        names = [channel.name for channel in self.data.channels] if self.data is not None else []
+        self.measure_channel.blockSignals(True)
+        self.measure_channel.clear()
+        self.measure_channel.addItems(names)
+        if current in names:
+            self.measure_channel.setCurrentText(current)
+        self.measure_channel.blockSignals(False)
+        self._update_measurements()
+
+    def _update_measurements(self, *_args: object) -> None:
+        if not hasattr(self, "measure_labels"):
+            return
+        channel = self._channel_by_name(self.measure_channel.currentText()) if self.data is not None else None
+        if self.data is None or channel is None:
+            self._set_measurements({})
+            return
+
+        time = self.data.time.astype(float)
+        values = channel.values.astype(float)
+        if self.measure_range.currentData() == "cursors":
+            cursor_range = self.waveform_plot.x_cursor_range()
+            if cursor_range is None:
+                self._set_measurements({})
+                return
+            low, high = cursor_range
+            mask = (time >= low) & (time <= high)
+        else:
+            mask = np.ones(values.size, dtype=bool)
+        mask &= np.isfinite(time) & np.isfinite(values)
+        selected_time = time[mask]
+        selected_values = values[mask]
+        if selected_values.size == 0:
+            self._set_measurements({})
+            return
+
+        average = float(np.mean(selected_values))
+        vertical = {
+            "max": float(np.max(selected_values)),
+            "min": float(np.min(selected_values)),
+            "avg": average,
+            "ptp": float(np.ptp(selected_values)),
+            "rms": float(np.sqrt(np.mean(np.square(selected_values)))),
+            "acrms": float(np.sqrt(np.mean(np.square(selected_values - average)))),
+        }
+        horizontal = self._fft_horizontal_measurements(channel, self.waveform_plot.x_cursor_range() if self.measure_range.currentData() == "cursors" else None)
+        self._set_measurements({**vertical, **horizontal})
+
+    def _fft_horizontal_measurements(
+        self,
+        channel: ChannelData,
+        time_range: tuple[float, float] | None,
+    ) -> dict[str, float | None]:
+        if self.data is None:
+            return {"frequency": None, "period": None}
+        try:
+            spectrum = create_fft_spectrum(
+                channel=channel,
+                time=self.data.time,
+                name=f"Measure FFT({channel.name})",
+                time_range=time_range,
+                window_id="rectangular",
+                remove_dc=True,
+                zero_pad="next_pow2",
+            )
+        except Exception:
+            return {"frequency": None, "period": None}
+        if spectrum.frequency.size < 2:
+            return {"frequency": None, "period": None}
+        frequency = spectrum.frequency[1:]
+        magnitude = spectrum.magnitude[1:]
+        finite = np.isfinite(frequency) & np.isfinite(magnitude)
+        if not np.any(finite):
+            return {"frequency": None, "period": None}
+        frequency = frequency[finite]
+        magnitude = magnitude[finite]
+        peak_frequency = float(frequency[int(np.argmax(magnitude))])
+        if not np.isfinite(peak_frequency) or peak_frequency <= 0:
+            return {"frequency": None, "period": None}
+        return {"frequency": peak_frequency, "period": 1.0 / peak_frequency}
+
+    def _set_measurements(self, measurements: dict[str, float | None]) -> None:
+        units = {"period": " s", "frequency": " Hz"}
+        for key, label in self.measure_labels.items():
+            value = measurements.get(key)
+            text = _format_value(value)
+            if value is not None and np.isfinite(value) and key in units:
+                text = f"{text}{units[key]}"
+            label.setText(text)
 
     def _math_operand_changed(self) -> None:
         if not hasattr(self, "math_result_name"):
@@ -658,25 +952,47 @@ class MainWindow(QtWidgets.QMainWindow):
             self.math_result_name.setText(default_result_name(function_id, operand_a, operand_b))
 
     def _start_operand_pick(self, operand: str, checked: bool) -> None:
+        pick_id = f"math_{operand}"
         if not checked:
-            if self.pending_math_operand_pick == operand:
+            if self.pending_waveform_pick == pick_id:
                 self._clear_operand_pick()
             return
-        self.pending_math_operand_pick = operand
+        self.pending_waveform_pick = pick_id
         self.pick_operand_a.setChecked(operand == "a")
         self.pick_operand_b.setChecked(operand == "b")
+        if hasattr(self, "pick_measure_channel"):
+            self.pick_measure_channel.setChecked(False)
         self.plot_tabs.setCurrentWidget(self.waveform_plot)
         self.statusBar().showMessage(f"Click a waveform trace to select operand {operand.upper()}")
 
-    def _clear_operand_pick(self) -> None:
-        self.pending_math_operand_pick = None
+    def _start_measure_pick(self, checked: bool) -> None:
+        if not checked:
+            if self.pending_waveform_pick == "measure":
+                self._clear_operand_pick()
+            return
+        self.pending_waveform_pick = "measure"
         self.pick_operand_a.setChecked(False)
         self.pick_operand_b.setChecked(False)
+        self.pick_measure_channel.setChecked(True)
+        self.plot_tabs.setCurrentWidget(self.waveform_plot)
+        self.statusBar().showMessage("Click a waveform trace to select the measurement waveform")
 
-    def _math_waveform_picked(self, channel_name: str) -> None:
-        if self.pending_math_operand_pick is None:
+    def _clear_operand_pick(self) -> None:
+        self.pending_waveform_pick = None
+        self.pick_operand_a.setChecked(False)
+        self.pick_operand_b.setChecked(False)
+        if hasattr(self, "pick_measure_channel"):
+            self.pick_measure_channel.setChecked(False)
+
+    def _waveform_picked(self, channel_name: str) -> None:
+        if self.pending_waveform_pick is None:
             return
-        if self.pending_math_operand_pick == "a":
+        if self.pending_waveform_pick == "measure":
+            self.measure_channel.setCurrentText(channel_name)
+            self._clear_operand_pick()
+            self.statusBar().showMessage(f"Measurement waveform: {channel_name}")
+            return
+        if self.pending_waveform_pick == "math_a":
             self.math_operand_a.setCurrentText(channel_name)
             operand = "A"
         else:
@@ -885,6 +1201,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._rebuild_channels(self.data.channels)
         self._rebuild_active_channel(self.data.channels)
         self._sync_math_controls()
+        self._sync_measure_controls()
         self._update_cursor_panel()
 
     def _channel_by_name(self, name: str) -> ChannelData | None:
@@ -919,6 +1236,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._rebuild_channels(self.data.channels)
         self._rebuild_active_channel(self.data.channels)
         self._sync_math_controls()
+        self._sync_measure_controls()
         self._sync_math_outputs()
         self._sync_cursor_axis_selector()
 

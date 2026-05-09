@@ -56,7 +56,7 @@ def test_operand_pick_buttons_use_clicked_waveform(tmp_path: Path) -> None:
     window.waveform_plot._on_curve_clicked("current", object())
 
     assert window.math_operand_a.currentText() == "current"
-    assert window.pending_math_operand_pick is None
+    assert window.pending_waveform_pick is None
     assert window.pick_operand_a.isChecked() is False
 
     window._start_operand_pick("b", True)
@@ -64,6 +64,82 @@ def test_operand_pick_buttons_use_clicked_waveform(tmp_path: Path) -> None:
 
     assert window.math_operand_b.currentText() == "voltage"
     assert window.pick_operand_b.isChecked() is False
+
+
+def test_measure_pick_button_uses_clicked_waveform(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    window._start_measure_pick(True)
+    window.waveform_plot._on_curve_clicked("current", object())
+
+    assert window.measure_channel.currentText() == "current"
+    assert window.pending_waveform_pick is None
+    assert window.pick_measure_channel.isChecked() is False
+
+
+def test_right_side_tab_detaches_and_reattaches_on_close(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    tab = window.side_tabs.widget(2)
+
+    window.side_tabs.detach_tab(2)
+    app.processEvents()
+
+    assert window.side_tabs.count() == 3
+    assert window.side_tabs.indexOf(tab) == -1
+    floating = window.side_tabs._detached_windows[tab]
+    assert floating.layout().itemAt(0).widget() is tab
+    assert tab.parent() is floating
+
+    floating.close()
+    app.processEvents()
+
+    assert window.side_tabs.count() == 4
+    assert window.side_tabs.widget(2) is tab
+    assert window.side_tabs.currentWidget() is tab
+
+
+def test_right_panel_restore_tab_shows_when_side_panel_collapsed(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.show()
+    app.processEvents()
+    window._update_side_panel_restore_tab()
+
+    assert window.side_panel_restore_tab.isVisible() is False
+    assert window.side_panel_restore_tab.text() == "^ Panel ^"
+
+    window.splitter.setSizes([window.width(), 0])
+    window._update_side_panel_restore_tab()
+    app.processEvents()
+
+    assert window.side_panel_restore_tab.isVisible() is True
+
+    window.side_panel_restore_tab.click()
+    app.processEvents()
+
+    assert window.splitter.sizes()[1] > 8
+    assert window.side_panel_restore_tab.isVisible() is False
+
+
+def test_spectrum_range_only_visible_for_fft(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    _select_combo_data(window.math_function, "square")
+    assert window.spectrum_range_box.isHidden() is True
+
+    _select_combo_data(window.math_function, "fft")
+    assert window.spectrum_range_box.isHidden() is False
 
 
 def test_load_file_schedules_waveform_setup(tmp_path: Path) -> None:
@@ -129,6 +205,40 @@ def test_increasing_nonuniform_time_column_is_allowed_with_warning() -> None:
     assert valid is True
     assert "nominal spacing" in status
     assert "FFT uses median spacing" in status
+
+
+def test_measure_tab_reports_vertical_and_fft_horizontal_values(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._update_measurements()
+
+    assert window.measure_labels["max"].text() == "1"
+    assert window.measure_labels["min"].text() == "-1"
+    assert window.measure_labels["ptp"].text() == "2"
+    assert float(window.measure_labels["rms"].text()) == pytest.approx(np.sqrt(0.5))
+    assert float(window.measure_labels["acrms"].text()) == pytest.approx(np.sqrt(0.5))
+    assert window.measure_labels["frequency"].text() == "0.25 Hz"
+    assert window.measure_labels["period"].text() == "4 s"
+
+
+def test_measure_tab_uses_x_cursor_range(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("current")
+    _select_combo_data(window.measure_range, "cursors")
+    window.waveform_plot.set_x_cursors_visible(True)
+    window.waveform_plot.x_cursors[0].setValue(2.0)
+    window.waveform_plot.x_cursors[1].setValue(5.0)
+    window._update_measurements()
+
+    assert window.measure_labels["min"].text() == "2"
+    assert window.measure_labels["max"].text() == "5"
+    assert window.measure_labels["avg"].text() == "3.5"
 
 
 def test_fft_uses_x_cursors_window_and_frequency_range(tmp_path: Path) -> None:
