@@ -117,16 +117,16 @@
     <message>
         <location filename="../viewer.py" line="558"/>
         <location filename="../viewer.py" line="723"/>
-        <location filename="../viewer.py" line="894"/>
-        <location filename="../viewer.py" line="991"/>
+        <location filename="../viewer.py" line="896"/>
+        <location filename="../viewer.py" line="993"/>
         <source>Left</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../viewer.py" line="559"/>
         <location filename="../viewer.py" line="723"/>
-        <location filename="../viewer.py" line="894"/>
-        <location filename="../viewer.py" line="991"/>
+        <location filename="../viewer.py" line="896"/>
+        <location filename="../viewer.py" line="993"/>
         <source>Right</source>
         <translation type="unfinished"></translation>
     </message>
@@ -152,7 +152,7 @@
     </message>
     <message>
         <location filename="../viewer.py" line="617"/>
-        <location filename="../viewer.py" line="1423"/>
+        <location filename="../viewer.py" line="1425"/>
         <source>Math</source>
         <translation type="unfinished"></translation>
     </message>
@@ -208,7 +208,7 @@
     </message>
     <message>
         <location filename="../viewer.py" line="695"/>
-        <location filename="../viewer.py" line="816"/>
+        <location filename="../viewer.py" line="818"/>
         <source>Open Waveform</source>
         <translation type="unfinished"></translation>
     </message>
@@ -335,217 +335,222 @@
     </message>
     <message>
         <location filename="../viewer.py" line="799"/>
-        <location filename="../viewer.py" line="811"/>
+        <location filename="../viewer.py" line="813"/>
         <source>About {app}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="818"/>
+        <location filename="../viewer.py" line="803"/>
+        <source>Repository</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../viewer.py" line="820"/>
         <source>Waveform files (*.csv *.xls *.xlsx *.xlsm);;CSV files (*.csv);;Excel files (*.xls *.xlsx *.xlsm);;All files (*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="825"/>
+        <location filename="../viewer.py" line="827"/>
         <source>Could not load waveform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="835"/>
+        <location filename="../viewer.py" line="837"/>
         <source>Select Waveform Sheet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="836"/>
+        <location filename="../viewer.py" line="838"/>
         <source>Waveform sheet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="895"/>
-        <location filename="../viewer.py" line="992"/>
+        <location filename="../viewer.py" line="897"/>
+        <location filename="../viewer.py" line="994"/>
         <source>Y control group: {axis} axis</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="915"/>
+        <location filename="../viewer.py" line="917"/>
         <source>Use OpenGL rendering</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="915"/>
+        <location filename="../viewer.py" line="917"/>
         <source>OpenGL is not available</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="927"/>
+        <location filename="../viewer.py" line="929"/>
         <source>Renderer: {renderer}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="931"/>
+        <location filename="../viewer.py" line="933"/>
         <source>Renderer unavailable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="931"/>
+        <location filename="../viewer.py" line="933"/>
         <source>OpenGL rendering is not available on this system.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="956"/>
+        <location filename="../viewer.py" line="958"/>
         <source>Restart Required</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="957"/>
+        <location filename="../viewer.py" line="959"/>
         <source>Restart now to apply the selected language?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="973"/>
+        <location filename="../viewer.py" line="975"/>
         <source>Restart Failed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="973"/>
+        <location filename="../viewer.py" line="975"/>
         <source>Could not restart the application.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1002"/>
+        <location filename="../viewer.py" line="1004"/>
         <source>Waveform Setup</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1002"/>
+        <location filename="../viewer.py" line="1004"/>
         <source>Load a waveform file before configuring axes.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1049"/>
+        <location filename="../viewer.py" line="1051"/>
         <source>Drag to Left Axis or Right Axis to enable this waveform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1050"/>
+        <location filename="../viewer.py" line="1052"/>
         <source>Show or hide this waveform, or drag it to another axis group</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1072"/>
+        <location filename="../viewer.py" line="1074"/>
         <source>Left Axis</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1073"/>
+        <location filename="../viewer.py" line="1075"/>
         <source>Right Axis</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1074"/>
+        <location filename="../viewer.py" line="1076"/>
         <source>Disabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1076"/>
+        <location filename="../viewer.py" line="1078"/>
         <source>Moved {name} to {group}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1360"/>
+        <location filename="../viewer.py" line="1362"/>
         <source>Click a waveform trace to select operand {operand}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1374"/>
+        <location filename="../viewer.py" line="1376"/>
         <source>Click a waveform trace to select the cursor active channel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1388"/>
+        <location filename="../viewer.py" line="1390"/>
         <source>Click a waveform trace to select the measurement waveform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1405"/>
+        <location filename="../viewer.py" line="1407"/>
         <source>Cursor channel: {name}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1410"/>
+        <location filename="../viewer.py" line="1412"/>
         <source>Measurement waveform: {name}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1419"/>
+        <location filename="../viewer.py" line="1421"/>
         <source>Operand {operand}: {name}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1423"/>
+        <location filename="../viewer.py" line="1425"/>
         <source>Load a CSV file before creating calculated traces.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1435"/>
-        <location filename="../viewer.py" line="1507"/>
-        <location filename="../viewer.py" line="1522"/>
+        <location filename="../viewer.py" line="1437"/>
+        <location filename="../viewer.py" line="1509"/>
+        <location filename="../viewer.py" line="1524"/>
         <source>Math failed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1442"/>
+        <location filename="../viewer.py" line="1444"/>
         <source>Calculated trace name cannot be empty</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1444"/>
+        <location filename="../viewer.py" line="1446"/>
         <source>A trace named {name!r} already exists</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1449"/>
-        <location filename="../viewer.py" line="1470"/>
+        <location filename="../viewer.py" line="1451"/>
+        <location filename="../viewer.py" line="1472"/>
         <source>Select operand A</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1460"/>
+        <location filename="../viewer.py" line="1462"/>
         <source>Added calculated trace: {name}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1467"/>
+        <location filename="../viewer.py" line="1469"/>
         <source>Spectrum name cannot be empty</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1488"/>
-        <location filename="../viewer.py" line="1528"/>
+        <location filename="../viewer.py" line="1490"/>
+        <location filename="../viewer.py" line="1530"/>
         <source>Updated spectrum: {name}, {window} window, {start:.8g} to {end:.8g}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1508"/>
+        <location filename="../viewer.py" line="1510"/>
         <source>Source trace {name!r} is no longer available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1546"/>
+        <location filename="../viewer.py" line="1548"/>
         <source>Removed calculated trace: {name}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1551"/>
+        <location filename="../viewer.py" line="1553"/>
         <source>Removed spectrum: {name}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1561"/>
+        <location filename="../viewer.py" line="1563"/>
         <source>Spectrum Range</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1561"/>
+        <location filename="../viewer.py" line="1563"/>
         <source>Enter numeric frequency bounds.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -745,112 +750,112 @@
 <context>
     <name>WaveformSetupDialog</name>
     <message>
-        <location filename="../viewer.py" line="1822"/>
+        <location filename="../viewer.py" line="1830"/>
         <source>Waveform Setup</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1832"/>
+        <location filename="../viewer.py" line="1840"/>
         <source>Time Base</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1836"/>
+        <location filename="../viewer.py" line="1844"/>
         <source>Time column</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1837"/>
+        <location filename="../viewer.py" line="1845"/>
         <source>Sample rate (Sa/s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1838"/>
+        <location filename="../viewer.py" line="1846"/>
         <source>Sample interval (s/pt)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1839"/>
+        <location filename="../viewer.py" line="1847"/>
         <source>Sample index</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1845"/>
+        <location filename="../viewer.py" line="1853"/>
         <source>Mode</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1847"/>
+        <location filename="../viewer.py" line="1855"/>
         <source>Column</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1849"/>
+        <location filename="../viewer.py" line="1857"/>
         <source>Value</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1855"/>
+        <location filename="../viewer.py" line="1863"/>
         <source>Waveform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1855"/>
+        <location filename="../viewer.py" line="1863"/>
         <source>Axis</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1855"/>
+        <location filename="../viewer.py" line="1863"/>
         <source>Unit</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1855"/>
+        <location filename="../viewer.py" line="1863"/>
         <source>Y min</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1855"/>
+        <location filename="../viewer.py" line="1863"/>
         <source>Y max</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1869"/>
+        <location filename="../viewer.py" line="1877"/>
         <source>left</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1870"/>
+        <location filename="../viewer.py" line="1878"/>
         <source>right</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1871"/>
+        <location filename="../viewer.py" line="1879"/>
         <source>disabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1950"/>
+        <location filename="../viewer.py" line="1958"/>
         <source>Generated time from sample rate.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1950"/>
+        <location filename="../viewer.py" line="1958"/>
         <source>Sample rate must be greater than zero.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1954"/>
+        <location filename="../viewer.py" line="1962"/>
         <source>Generated time from sample interval.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1954"/>
+        <location filename="../viewer.py" line="1962"/>
         <source>Sample interval must be greater than zero.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../viewer.py" line="1956"/>
+        <location filename="../viewer.py" line="1964"/>
         <source>Generated sample-index time base.</source>
         <translation type="unfinished"></translation>
     </message>

@@ -18,7 +18,7 @@ from math_engine import (
     default_result_name,
 )
 from PySide6 import QtCore, QtGui, QtWidgets
-from app_info import APP_NAME, APP_VERSION, COPYRIGHT, LICENSE_NAME
+from app_info import APP_NAME, APP_VERSION, COPYRIGHT, LICENSE_NAME, REPOSITORY_URL
 from app_theme import apply_dark_theme, apply_system_theme
 from plot_widgets import AxisGroupSettings, SpectrumPlot, WaveformPlot
 
@@ -800,12 +800,14 @@ class MainWindow(QtWidgets.QMainWindow):
         about_action.triggered.connect(self._show_about_dialog)
 
     def _show_about_dialog(self) -> None:
+        repository_label = self.tr("Repository")
         text = (
             f"<b>{APP_NAME}</b><br>"
             f"{self.tr('Version')} {APP_VERSION}<br><br>"
             f"{self.tr('A desktop waveform viewer for CSV and Excel oscilloscope data.')}<br><br>"
             f"{self.tr('License')}: {LICENSE_NAME}<br>"
             f"{COPYRIGHT}<br><br>"
+            f"{repository_label}: <a href=\"{REPOSITORY_URL}\">{REPOSITORY_URL}</a><br><br>"
             f"{self.tr('Built with PySide6, pyqtgraph, NumPy, and pandas.')}"
         )
         QtWidgets.QMessageBox.about(self, self.tr("About {app}").format(app=APP_NAME), text)
