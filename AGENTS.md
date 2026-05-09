@@ -27,7 +27,7 @@ Tests:
 - Git may require `-c safe.directory=C:/Users/barry/Documents/cswave` because the sandbox user differs from the repo owner.
 - OpenGL is optional:
   - Startup default can be set with `CSWAVE_OPENGL=1`.
-  - Toolbar renderer selector can switch CPU/OpenGL at runtime.
+  - Display menu renderer selector can switch CPU/OpenGL at runtime.
   - Renderer switching intentionally rebuilds curves to avoid stale pyqtgraph/OpenGL render caches.
 
 ## File Map
@@ -35,7 +35,7 @@ Tests:
 - `main.py`: argparse entry point and QApplication startup.
 - `csv_loader.py`: CSV/Excel parsing, sheet discovery, time-column detection, numeric filtering, channel/timebase metadata.
 - `math_engine.py`: unary/binary math registry, FFT/window/zero-padding helpers, `SpectrumData`.
-- `viewer.py`: main window, toolbar, side tabs, channel controls, cursor readout panel, Math tab, Waveform Setup dialog.
+- `viewer.py`: main window, native menu bar, side tabs, channel controls, cursor readout panel, Math tab, Waveform Setup dialog.
 - `plot_widgets.py`: waveform plotting engine, spectrum plotting engine, dual axes, preview region, cursor items, renderer switching, interaction behavior.
 - `tests/test_csv_loader.py`: CSV/Excel loader and import-order regression tests.
 - `tests/test_math_engine.py`: calculated trace, FFT, windowing, DC removal, and zero-padding tests.
@@ -83,7 +83,7 @@ Use this section to avoid rereading the whole repo for common changes.
 - Change FFT behavior: update `math_engine.create_fft_spectrum()` and `SpectrumData`; preserve the order clip -> DC removal -> window -> zero pad -> `rfft`.
 - Change Math tab UI behavior: use `MainWindow._build_math_panel()` and the `_add_*`, `_update_*`, `_math_output_selected()` methods.
 - Change spectrum interaction/display: use `SpectrumPlot` and `SpectrumViewBox`; avoid touching waveform view code unless behavior must be shared.
-- Change toolbar shortcuts/actions: use `MainWindow._build_actions()` and `_build_shortcuts()`.
+- Change menu shortcuts/actions: use `MainWindow._build_actions()` and `_build_shortcuts()`.
 
 ### Read Sparingly
 
@@ -97,7 +97,7 @@ Use this section to avoid rereading the whole repo for common changes.
 
 - `Open Waveform` supports `.csv`, `.xls`, `.xlsx`, and `.xlsm`.
 - Excel files with multiple sheets prompt the user to choose the sheet containing waveforms.
-- Loading through the toolbar or startup argument opens `Waveform Setup` automatically (`show_setup=True`); programmatic/test `load_file()` calls are non-modal by default.
+- Loading through the `Open Waveform` menu-bar action or startup argument opens `Waveform Setup` automatically (`show_setup=True`); programmatic/test `load_file()` calls are non-modal by default.
 - `Waveform Setup` controls both X-axis timebase and Y-axis grouping:
   - `Time column`: selected numeric column must be finite, strictly increasing, and uniformly spaced; selected column is removed from plotted signals.
   - `Sample rate (Sa/s)`: generated time is `sample_index / sample_rate`; all numeric columns, including detected time, are normal signals.
@@ -151,14 +151,14 @@ Use this section to avoid rereading the whole repo for common changes.
   - Spectrum line color matches the source waveform.
   - Frequency min/max filters display without recomputing FFT.
 
-## Toolbar
+## Menu Bar
 
-Toolbar is organized as:
+The native Qt menu bar is organized as:
 
-- File: `Open Waveform`
+- `Open Waveform` top-level action
 - View: `Reset View`, `Waveform Setup...`
-- Navigate: `Y group`, `Zoom`, `+`, `-`
-- Display: `Renderer` (`CPU` / `OpenGL`)
+- Navigate: `Y group`, `Zoom` axis selector with adjacent `+` / `-`
+- Display: `Renderer` (`CPU` / `OpenGL`), `Language`, `Force dark`
 
 Shortcuts:
 

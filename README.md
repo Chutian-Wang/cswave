@@ -30,14 +30,14 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
   - non-V/I channels disabled by default
 - Waveform Setup dialog for selecting/overriding the time base and assigning waveforms to left, right, or disabled groups.
 - Channel selector for showing or hiding enabled waveforms.
-- Toolbar controls for active Y axis group, zoom axis, and renderer selection.
+- Native menu controls for opening waveforms, active Y axis group, zoom, renderer selection, theme, and language.
 - Main waveform plot with X pan/zoom and active-axis Y pan/zoom.
 - Click a waveform to highlight it, dim other traces, and switch to that waveform's axis group.
 - Highlighted waveform mode supports free X/Y panning for the active trace group.
 - Preview window with the same left/right Y scaling as the main plot.
 - Preview highlight region controls the main X range after mouse release.
 - Mouse wheel on the preview zooms the preview time scale while preserving the highlighted region's visual footprint.
-- Optional OpenGL renderer, selectable from the toolbar or at startup with `CSWAVE_OPENGL=1`.
+- Optional OpenGL renderer, selectable from the Display menu or at startup with `CSWAVE_OPENGL=1`.
 - Movable X and Y cursors with on-plot labels, position, delta, and active-channel interpolated values.
 - Cursor labels can be dragged directly to move the corresponding cursor.
 - Cursor axis group selector, with active-channel choices filtered to the cursor group.
@@ -49,9 +49,9 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 
 | Action | Control |
 | --- | --- |
-| Open waveform | `Ctrl+O` / `Cmd+O` |
+| Open waveform | `Ctrl+O` / `Cmd+O` or `Open Waveform` on the menu bar |
 | Toggle active Y control group | `T` |
-| Select active Y control group | `Y group` toolbar dropdown |
+| Select active Y control group | `Navigate` > `Y group` |
 | Pan X | drag on main plot |
 | Pan active Y axis | `Ctrl` + drag on main plot |
 | Free-pan highlighted trace | click a waveform, then drag on main plot |
@@ -61,20 +61,20 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 | Preview range selection | drag/release the highlighted preview region |
 | Highlight waveform | left-click a visible waveform |
 | Clear waveform highlight | left-click empty plot space |
-| Toolbar zoom | choose `X` or `Y`, then use `+` / `-` |
-| Reset view | `Ctrl+R` / `Cmd+R` or `Reset View` toolbar button |
-| Configure waveform setup | `Waveform Setup...` toolbar button |
-| Select renderer | `Renderer` toolbar dropdown (`CPU` / `OpenGL`) |
+| Menu zoom | choose `Navigate` > `Zoom` as `X` or `Y`, then use the adjacent `+` / `-` buttons |
+| Reset view | `Ctrl+R` / `Cmd+R` or `View` > `Reset View` |
+| Configure waveform setup | `View` > `Waveform Setup...` |
+| Select renderer | `Display` > `Renderer` (`CPU` / `OpenGL`) |
 | Toggle X cursors | `X` or `X cursors` checkbox |
 | Toggle Y cursors | `Y` or `Y cursors` checkbox |
 | Move cursor | drag the dashed cursor line or its label |
 | Reset cursors | `Shift+R` or `Reset Cursors` button in the Cursors tab |
 
-When `Y` is selected in the toolbar zoom control, zoom buttons apply to the currently active Y control group. Press `T` or use the `Y group` dropdown to switch that active group between left and right. Cursor axis group is controlled separately in the Cursors tab, so switching active Y control does not move existing cursors.
+When `Y` is selected in the Navigate zoom control, zoom commands apply to the currently active Y control group. Press `T` or use the `Y group` menu control to switch that active group between left and right. Cursor axis group is controlled separately in the Cursors tab, so switching active Y control does not move existing cursors.
 
 ## Waveform Setup
 
-Waveform Setup opens after loading a waveform file and is also available from the toolbar. It controls the X-axis time base and each waveform's Y-axis assignment.
+Waveform Setup opens after loading a waveform file and is also available from the View menu. It controls the X-axis time base and each waveform's Y-axis assignment.
 
 Time-base options:
 
@@ -150,7 +150,7 @@ python main.py --language zh_CN example_csv/1t1r_set_read_0P1V.csv
 
 Use `--language system` to explicitly request the system language.
 
-The `Display` toolbar section also has a `Language` selector. Choosing a different language prompts for a restart and relaunches the app with the selected startup locale.
+The `Display` menu also has a `Language` selector. Choosing a different language prompts for a restart and relaunches the app with the selected startup locale.
 
 Translation files live in `translations/`:
 

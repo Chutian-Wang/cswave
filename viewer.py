@@ -526,33 +526,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self._open_waveform_setup()
 
     def _build_actions(self) -> None:
-        toolbar = self.addToolBar(self.tr("Main"))
-        toolbar.setObjectName("MainToolbar")
-        toolbar.setMovable(False)
-        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
-
-        toolbar.addWidget(_toolbar_section_label(self.tr("File")))
+        menu_bar = self.menuBar()
 
         open_action = QtGui.QAction(self.tr("Open Waveform"), self)
         open_action.setShortcut(QtGui.QKeySequence.Open)
         open_action.triggered.connect(self._open_dialog)
-        toolbar.addAction(open_action)
+        menu_bar.addAction(open_action)
 
-        toolbar.addSeparator()
-        toolbar.addWidget(_toolbar_section_label(self.tr("View")))
+        view_menu = menu_bar.addMenu(self.tr("View"))
+        navigate_menu = menu_bar.addMenu(self.tr("Navigate"))
+        display_menu = menu_bar.addMenu(self.tr("Display"))
 
         reset_action = QtGui.QAction(self.tr("Reset View"), self)
         reset_action.triggered.connect(self._reset_active_view)
-        toolbar.addAction(reset_action)
+        view_menu.addAction(reset_action)
 
         waveform_setup_action = QtGui.QAction(self.tr("Waveform Setup..."), self)
         waveform_setup_action.setToolTip(self.tr("Configure left/right axis grouping, units, and Y ranges"))
         waveform_setup_action.triggered.connect(self._open_waveform_setup)
-        toolbar.addAction(waveform_setup_action)
+        view_menu.addAction(waveform_setup_action)
 
-        toolbar.addSeparator()
-        toolbar.addWidget(_toolbar_section_label(self.tr("Navigate")))
-        toolbar.addWidget(_toolbar_field_label(self.tr("Y group")))
         self.axis_group_selector = QtWidgets.QComboBox()
         self.axis_group_selector.addItem(self.tr("Left"), "left")
         self.axis_group_selector.addItem(self.tr("Right"), "right")
@@ -560,28 +553,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.axis_group_selector.setMinimumContentsLength(5)
         self._sync_axis_group_selector()
         self.axis_group_selector.currentIndexChanged.connect(self._axis_group_changed)
-        toolbar.addWidget(self.axis_group_selector)
+        navigate_menu.addAction(_menu_labeled_widget(self.tr("Y group"), self.axis_group_selector, navigate_menu))
 
-        toolbar.addWidget(_toolbar_field_label(self.tr("Zoom")))
         self.zoom_axis_selector = QtWidgets.QComboBox()
         self.zoom_axis_selector.addItems(["X", "Y"])
-        self.zoom_axis_selector.setToolTip(self.tr("Axis used by toolbar zoom buttons"))
+        self.zoom_axis_selector.setToolTip(self.tr("Axis used by zoom commands"))
         self.zoom_axis_selector.setMinimumContentsLength(1)
-        toolbar.addWidget(self.zoom_axis_selector)
+        navigate_menu.addAction(_menu_zoom_widget(self, self.zoom_axis_selector, navigate_menu))
 
-        zoom_in_action = QtGui.QAction("+", self)
-        zoom_in_action.setToolTip(self.tr("Zoom in on the selected axis"))
-        zoom_in_action.triggered.connect(lambda: self.waveform_plot.zoom_in(self._selected_zoom_axis()))
-        toolbar.addAction(zoom_in_action)
-
-        zoom_out_action = QtGui.QAction("-", self)
-        zoom_out_action.setToolTip(self.tr("Zoom out on the selected axis"))
-        zoom_out_action.triggered.connect(lambda: self.waveform_plot.zoom_out(self._selected_zoom_axis()))
-        toolbar.addAction(zoom_out_action)
-
-        toolbar.addSeparator()
-        toolbar.addWidget(_toolbar_section_label(self.tr("Display")))
-        toolbar.addWidget(_toolbar_field_label(self.tr("Renderer")))
         self.renderer_selector = QtWidgets.QComboBox()
         self.renderer_selector.addItem("CPU", "cpu")
         self.renderer_selector.addItem("OpenGL", "opengl")
@@ -589,22 +568,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.renderer_selector.setMinimumContentsLength(6)
         self._sync_renderer_selector()
         self.renderer_selector.currentIndexChanged.connect(self._renderer_changed)
-        toolbar.addWidget(self.renderer_selector)
-        self.force_dark_mode = QtWidgets.QCheckBox(self.tr("Force dark"))
-        self.force_dark_mode.setToolTip(self.tr("Use a dark application theme instead of the system theme"))
-        self.force_dark_mode.toggled.connect(self._force_dark_mode_changed)
-        toolbar.addWidget(self.force_dark_mode)
-        toolbar.addWidget(_toolbar_field_label(self.tr("Language")))
+        display_menu.addAction(_menu_labeled_widget(self.tr("Renderer"), self.renderer_selector, display_menu))
         self.language_selector = QtWidgets.QComboBox()
         self.language_selector.addItem("System", "system")
         self.language_selector.addItem("English", "en")
-        self.language_selector.addItem("中文", "zh_CN")
-        self.language_selector.addItem("日本語", "ja_JP")
+        self.language_selector.addItem("\u4e2d\u6587", "zh_CN")
+        self.language_selector.addItem("\u65e5\u672c\u8a9e", "ja_JP")
         self.language_selector.setToolTip(self.tr("Change the startup language and restart the app"))
         self.language_selector.setMinimumContentsLength(8)
         self._sync_language_selector()
         self.language_selector.currentIndexChanged.connect(self._language_changed)
-        toolbar.addWidget(self.language_selector)
+        display_menu.addAction(_menu_labeled_widget(self.tr("Language"), self.language_selector, display_menu))
+        display_menu.addSeparator()
+        self.force_dark_mode = QtWidgets.QCheckBox(self.tr("Force dark"))
+        self.force_dark_mode.setToolTip(self.tr("Force dark mode display (may affect how the app looks)"))
+        self.force_dark_mode.toggled.connect(self._force_dark_mode_changed)
+        display_menu.addAction(_menu_widget_action(self.force_dark_mode, display_menu))
 
     def _open_dialog(self) -> None:
         path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
@@ -1413,16 +1392,44 @@ class MainWindow(QtWidgets.QMainWindow):
         return area
 
 
-def _toolbar_section_label(text: str) -> QtWidgets.QLabel:
-    label = QtWidgets.QLabel(text)
-    label.setStyleSheet("QLabel { font-weight: 600; margin-left: 6px; margin-right: 2px; }")
-    return label
+def _menu_widget_action(widget: QtWidgets.QWidget, menu: QtWidgets.QMenu) -> QtWidgets.QWidgetAction:
+    action = QtWidgets.QWidgetAction(menu)
+    action.setDefaultWidget(widget)
+    return action
 
 
-def _toolbar_field_label(text: str) -> QtWidgets.QLabel:
-    label = QtWidgets.QLabel(text)
-    label.setStyleSheet("QLabel { color: #666; margin-left: 4px; }")
-    return label
+def _menu_labeled_widget(label: str, widget: QtWidgets.QWidget, menu: QtWidgets.QMenu) -> QtWidgets.QWidgetAction:
+    row = QtWidgets.QWidget()
+    layout = QtWidgets.QHBoxLayout(row)
+    layout.setContentsMargins(10, 4, 10, 4)
+    layout.setSpacing(8)
+    text = QtWidgets.QLabel(label)
+    text.setMinimumWidth(72)
+    layout.addWidget(text)
+    layout.addWidget(widget, stretch=1)
+    return _menu_widget_action(row, menu)
+
+
+def _menu_zoom_widget(window: "MainWindow", selector: QtWidgets.QComboBox, menu: QtWidgets.QMenu) -> QtWidgets.QWidgetAction:
+    row = QtWidgets.QWidget()
+    layout = QtWidgets.QHBoxLayout(row)
+    layout.setContentsMargins(10, 4, 10, 4)
+    layout.setSpacing(6)
+    label = QtWidgets.QLabel(window.tr("Zoom"))
+    label.setMinimumWidth(72)
+    layout.addWidget(label)
+    layout.addWidget(selector, stretch=1)
+    zoom_out = QtWidgets.QToolButton()
+    zoom_out.setText("-")
+    zoom_out.setToolTip(window.tr("Zoom out on the selected axis"))
+    zoom_out.clicked.connect(lambda: window.waveform_plot.zoom_out(window._selected_zoom_axis()))
+    layout.addWidget(zoom_out)
+    zoom_in = QtWidgets.QToolButton()
+    zoom_in.setText("+")
+    zoom_in.setToolTip(window.tr("Zoom in on the selected axis"))
+    zoom_in.clicked.connect(lambda: window.waveform_plot.zoom_in(window._selected_zoom_axis()))
+    layout.addWidget(zoom_in)
+    return _menu_widget_action(row, menu)
 
 
 def _format_value(value: float | None) -> str:
