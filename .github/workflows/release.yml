@@ -29,10 +29,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -45,12 +45,12 @@ jobs:
       - name: Build macOS package
         if: matrix.platform == 'macos'
         shell: bash
-        run: ./scripts/build_macos.sh
+        run: bash scripts/build_macos.sh
 
       - name: Build Linux package
         if: matrix.platform == 'linux'
         shell: bash
-        run: ./scripts/build_linux.sh
+        run: bash scripts/build_linux.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
