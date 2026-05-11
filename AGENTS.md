@@ -36,10 +36,14 @@ Tests:
 - `app_info.py`: app display name, version, copyright, and license constants used by UI and packaging.
 - `csv_loader.py`: CSV/Excel parsing, sheet discovery, time-column detection, numeric filtering, channel/timebase metadata.
 - `math_engine.py`: unary/binary math registry, FFT/window/zero-padding helpers, `SpectrumData`.
-- `viewer.py`: main window, native menu bar, side tabs, channel controls, cursor readout panel, Math tab, Waveform Setup dialog.
+- `measurement_engine.py`: pure measurement calculations for Measure readouts, including vertical stats, selected-range extraction, FFT-derived period/frequency, and measurement cache keys.
+- `ui_common.py`: shared Qt UI helpers, detachable tab/window helpers, SI scale formatting, and color utilities.
+- `viewer_panels.py`: right-side panel widgets for Channels, Cursors, Math, and Measure, including per-signal measurement cards and detached measurement windows.
+- `viewer.py`: main window orchestration, native menu bar, data/session state, timebase rebuilding, Math/Measure wiring, and Waveform Setup dialog.
 - `plot_widgets.py`: waveform plotting engine, spectrum plotting engine, dual axes, preview region, cursor items, renderer switching, interaction behavior.
 - `tests/test_csv_loader.py`: CSV/Excel loader and import-order regression tests.
 - `tests/test_math_engine.py`: calculated trace, FFT, windowing, DC removal, and zero-padding tests.
+- `tests/test_measurement_engine.py`: pure measurement stats, cursor range selection, FFT-derived horizontal measurements, and measurement cache key tests.
 - `tests/test_plot_widgets.py`: plot widget behavior regressions.
 - `tests/test_viewer_math.py`: viewer-level Math, Spectrum, Excel sheet selection, and setup workflow tests.
 - `cswave.spec`: PyInstaller release packaging configuration.
@@ -61,7 +65,9 @@ Use this section to avoid rereading the whole repo for common changes.
 4. `viewer._waveform_with_timebase()` rebuilds `WaveformData` when Waveform Setup changes the timebase.
 5. `plot_widgets.WaveformPlot` owns waveform rendering, channel selection, axis settings, cursor placement/readout, preview synchronization, highlighting, and renderer switching.
 6. `math_engine.py` is pure calculation code. It should not import Qt or pyqtgraph.
-7. `plot_widgets.SpectrumPlot` owns display and interaction for the active `SpectrumData`.
+7. `measurement_engine.py` is pure Measure readout code. It should not import Qt or pyqtgraph.
+8. `viewer_panels.py` owns side-panel widget composition; `MainWindow` wires those widgets to app state.
+9. `plot_widgets.SpectrumPlot` owns display and interaction for the active `SpectrumData`.
 
 ### Main State Owners
 
@@ -73,6 +79,9 @@ Use this section to avoid rereading the whole repo for common changes.
 - Visible channels: `WaveformPlot.selected_channels`.
 - Active/focused trace: `WaveformPlot.focused_channel`.
 - Cursor values and interpolation: `WaveformPlot.cursor_values()`.
+- Measure vertical stats and FFT-derived period/frequency: `measurement_engine.py`.
+- Measure UI cards, per-signal detach windows, and panel controls: `viewer_panels.py`.
+- Measure settings, debounced horizontal updates, and measurement caches: `MainWindow.measure_settings`, `MainWindow.measure_horizontal_cache`, `MainWindow.measure_horizontal_timer`.
 - Math function/window/zero-padding registries: `math_engine.py`.
 
 ### Common Change Points
@@ -84,14 +93,17 @@ Use this section to avoid rereading the whole repo for common changes.
 - Change preview behavior: use `WaveformPlot._on_x_range_changed()`, `_set_preview_range_for_region()`, `_zoom_preview_from_wheel()`, and related tests.
 - Add time-domain math: update `math_engine.MATH_FUNCTIONS`, `create_calculated_channel()`, and tests in `tests/test_math_engine.py`.
 - Change FFT behavior: update `math_engine.create_fft_spectrum()` and `SpectrumData`; preserve the order clip -> DC removal -> window -> zero pad -> `rfft`.
-- Change Math tab UI behavior: use `MainWindow._build_math_panel()` and the `_add_*`, `_update_*`, `_math_output_selected()` methods.
+- Change Math tab UI behavior: update `viewer_panels.MathPanel` for widgets and `MainWindow` `_add_*`, `_update_*`, `_math_output_selected()` methods for behavior.
+- Change Measure tab UI behavior: update `viewer_panels.MeasurePanel` / `MeasureChannelCard` for widgets and `MainWindow` measure methods for state wiring.
+- Change Measure calculations or performance: update `measurement_engine.py` first, then add tests in `tests/test_measurement_engine.py`; preserve debounced FFT-derived horizontal updates.
 - Change spectrum interaction/display: use `SpectrumPlot` and `SpectrumViewBox`; avoid touching waveform view code unless behavior must be shared.
 - Change menu shortcuts/actions: use `MainWindow._build_actions()` and `_build_shortcuts()`.
 
 ### Read Sparingly
 
 - Do not reread all of `plot_widgets.py` for loader, math-engine, or README-only changes.
-- Do not reread all of `viewer.py` when only changing pure math; inspect the specific Math tab method that calls the engine.
+- Do not reread all of `viewer.py` when only changing pure math; inspect the specific Math/Measure method that calls the engine.
+- Do not reread all of `viewer.py` for panel-only visual changes; inspect `viewer_panels.py` and only the relevant `MainWindow` wiring if signals/state are affected.
 - Do not inspect renderer/OpenGL code unless changing renderer mode, curve rebuilding, or performance behavior.
 - Do not inspect cursor label internals unless changing cursor drag/label behavior.
 - For most changes, inspect the relevant method plus nearby tests first, then expand only if the call path is unclear.
@@ -100,7 +112,7 @@ Use this section to avoid rereading the whole repo for common changes.
 
 - `Open Waveform` supports `.csv`, `.xls`, `.xlsx`, and `.xlsm`.
 - Excel files with multiple sheets prompt the user to choose the sheet containing waveforms.
-- Loading through `File` > `Open Waveform` or a startup argument opens `Waveform Setup` automatically (`show_setup=True`); programmatic/test `load_file()` calls are non-modal by default.
+- Loading through `File` > `Open Waveform`, a startup argument, or dropping a supported file onto the app window opens `Waveform Setup` automatically (`show_setup=True`); programmatic/test `load_file()` calls are non-modal by default.
 - `Waveform Setup` controls both X-axis timebase and Y-axis grouping:
   - `Time column`: selected numeric column must be finite, strictly increasing, and uniformly spaced; selected column is removed from plotted signals.
   - `Sample rate (Sa/s)`: generated time is `sample_index / sample_rate`; all numeric columns, including detected time, are normal signals.
@@ -136,6 +148,11 @@ Use this section to avoid rereading the whole repo for common changes.
 - Math outputs:
   - Clicking a calculated waveform output switches to `Waveforms` and highlights the trace.
   - Clicking an FFT output switches to `Spectrum`.
+- Measure outputs:
+  - Each measured signal is shown as a separate color-accented card.
+  - Double-click a measurement card to detach it into its own floating window; close the floating window to reattach it.
+  - Right-click a measurement card to remove that signal from Measure outputs.
+  - Each measured signal remembers its own range and SI scale settings.
 
 ## Math And FFT
 
@@ -161,7 +178,7 @@ The native Qt menu bar is organized as:
 - File: `Open Waveform`
 - View: `Reset View`, `Waveform Setup...`
 - Navigate: `Y group`, `Zoom` axis selection, `Zoom In`, `Zoom Out`
-- Display: `Renderer` (`CPU` / `OpenGL`), `Language`, `Force look`
+- Display: `Renderer` (`CPU` / `OpenGL`), `Language`, `Toggle theme`
 - Help: `About CSV Waveform Viewer`
 
 Shortcuts:
@@ -180,6 +197,8 @@ Shortcuts:
 - Preview curves always use `subsample`.
 - Preview range updates are throttled during main plot movement.
 - FFT zero padding increases bin density and memory/compute cost proportional to selected padded FFT length.
+- Measure vertical stats update immediately; FFT-derived period/frequency updates are debounced with `MainWindow.measure_horizontal_timer` and cached by `measurement_engine.MeasurementCacheKey`.
+- Avoid forcing synchronous Measure horizontal recomputation from high-frequency cursor movement or scale-only UI changes.
 - Remaining heavy cost is mostly Qt/pyqtgraph painting, not Python-side data loading.
 - Future robust optimization path: precomputed min/max LOD pyramid per trace.
 
@@ -196,3 +215,4 @@ Shortcuts:
   - focused trace draws above other traces,
   - right-axis viewbox lifts only when right-axis trace is focused.
 - If changing FFT behavior, keep the order: clip by X cursor range, remove DC if enabled, apply window, then zero-pad before `rfft`.
+- If changing translations, include `main.py`, `viewer.py`, `viewer_panels.py`, `ui_common.py`, and `plot_widgets.py` in `pyside6-lupdate`, then rebuild `.qm` files with `pyside6-lrelease`.

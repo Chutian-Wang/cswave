@@ -245,8 +245,31 @@ def default_result_name(function_id: str, operand_a: str, operand_b: str | None 
 
 
 def _derived_unit(function_id: str, operand_a: ChannelData, operand_b: ChannelData | None) -> str | None:
+    unit_a = operand_a.unit or None
+    unit_b = operand_b.unit if operand_b is not None else None
     if function_id in {"abs", "negate"}:
-        return operand_a.unit
-    if function_id in {"add", "subtract"} and operand_b is not None and operand_a.unit == operand_b.unit:
-        return operand_a.unit
+        return unit_a
+    if function_id == "square":
+        return _power_unit(unit_a, 2)
+    if function_id == "sqrt":
+        return f"sqrt({unit_a})" if unit_a else None
+    if function_id in {"log10", "ln"}:
+        return None
+    if function_id in {"add", "subtract"} and operand_b is not None and unit_a == unit_b:
+        return unit_a
+    if function_id == "multiply" and operand_b is not None:
+        if unit_a and unit_b:
+            return _power_unit(unit_a, 2) if unit_a == unit_b else f"{unit_a}*{unit_b}"
+        return unit_a or unit_b
+    if function_id == "divide" and operand_b is not None:
+        if unit_a and unit_b:
+            return None if unit_a == unit_b else f"{unit_a}/{unit_b}"
+        if unit_a:
+            return unit_a
+        if unit_b:
+            return f"1/{unit_b}"
     return None
+
+
+def _power_unit(unit: str | None, exponent: int) -> str | None:
+    return f"{unit}^{exponent}" if unit else None

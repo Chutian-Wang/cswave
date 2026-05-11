@@ -10,8 +10,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 from plot_widgets import AxisGroupSettings
+import viewer as viewer_module
 from viewer import AxisSetupDialog, MainWindow, TimebaseSettings, _restart_command, _time_column_validation, _waveform_with_timebase
 
 
@@ -78,6 +79,7 @@ def test_measure_pick_button_uses_clicked_waveform(tmp_path: Path) -> None:
     window.waveform_plot._on_curve_clicked("current", object())
 
     assert window.measure_channel.currentText() == "current"
+    assert window.measured_channels == ["current"]
     assert window.pending_waveform_pick is None
     assert window.pick_measure_channel.isChecked() is False
 
@@ -190,6 +192,71 @@ def test_right_side_tab_detaches_and_reattaches_on_close(tmp_path: Path) -> None
     assert window.side_tabs.currentWidget() is tab
 
 
+def test_measure_tab_detaches_with_multi_signal_readouts(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+    tab = window.side_tabs.widget(3)
+
+    window.side_tabs.detach_tab(3)
+    app.processEvents()
+
+    floating = window.side_tabs._detached_windows[tab]
+    assert floating.layout().itemAt(0).widget() is tab
+    assert "voltage" in window.measure_panel.measure_cards
+    assert _measure_text(window, "voltage", "max") == "1 V"
+
+    floating.close()
+    app.processEvents()
+
+    assert window.side_tabs.widget(3) is tab
+
+
+def test_individual_measurement_card_double_click_detaches_and_reattaches(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+    card = window.measure_panel.measure_cards["voltage"]
+    window._update_measurement_horizontal()
+
+    QtTest.QTest.mouseDClick(card, QtCore.Qt.MouseButton.LeftButton)
+    app.processEvents()
+
+    assert "voltage" not in window.measure_panel.measure_cards
+    floating = window.detached_measure_windows["voltage"]
+    assert floating.windowTitle() == "voltage measurements"
+    assert floating.layout().itemAt(0).widget() is card
+    assert _measure_text(window, "voltage", "period") == "4 s"
+
+    floating.close()
+    app.processEvents()
+
+    assert window.detached_measure_windows == {}
+    assert window.measure_panel.measure_cards["voltage"] is card
+
+
+def test_measurement_card_right_click_removes_channel(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+    card = window.measure_panel.measure_cards["voltage"]
+
+    QtTest.QTest.mouseClick(card, QtCore.Qt.MouseButton.RightButton)
+    app.processEvents()
+
+    assert window.measured_channels == []
+    assert window.measure_panel.measure_cards == {}
+
+
 def test_right_panel_restore_tab_shows_when_side_panel_collapsed(tmp_path: Path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app
@@ -274,7 +341,7 @@ def test_english_fallback_labels_and_stable_combo_ids(tmp_path: Path) -> None:
     assert window.language_actions["en"].text() == "English"
     assert window.language_actions["zh_CN"].text() == "\u4e2d\u6587"
     assert window.language_actions["ja_JP"].text() == "\u65e5\u672c\u8a9e"
-    assert window.force_dark_mode_action.text() == "Force look"
+    assert window.force_dark_mode_action.text() == "Toggle theme"
     assert window.force_dark_mode_action.toolTip() == "Force the app style instead of using the system look"
 
     dialog = AxisSetupDialog(
@@ -410,32 +477,169 @@ def test_measure_tab_reports_vertical_and_fft_horizontal_values(tmp_path: Path) 
     window = MainWindow()
     window.load_file(_write_wave_csv(tmp_path))
     window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+    window.measure_channel.setCurrentText("current")
+    window._add_measure_channel()
     window._update_measurements()
+    window._update_measurement_horizontal()
 
-    assert window.measure_labels["max"].text() == "1"
-    assert window.measure_labels["min"].text() == "-1"
-    assert window.measure_labels["ptp"].text() == "2"
-    assert float(window.measure_labels["rms"].text()) == pytest.approx(np.sqrt(0.5))
-    assert float(window.measure_labels["acrms"].text()) == pytest.approx(np.sqrt(0.5))
-    assert window.measure_labels["frequency"].text() == "0.25 Hz"
-    assert window.measure_labels["period"].text() == "4 s"
+    assert window.measured_channels == ["voltage", "current"]
+    assert set(window.measure_panel.measure_cards) == {"voltage", "current"}
+    assert _measure_text(window, "voltage", "max") == "1 V"
+    assert _measure_text(window, "voltage", "min") == "-1 V"
+    assert _measure_text(window, "voltage", "ptp") == "2 V"
+    assert _measure_text(window, "voltage", "rms") == "707.10678 mV"
+    assert _measure_text(window, "voltage", "acrms") == "707.10678 mV"
+    assert _measure_text(window, "voltage", "frequency") == "250 mHz"
+    assert _measure_text(window, "voltage", "period") == "4 s"
+    assert _measure_text(window, "current", "max") == "7 A"
 
 
-def test_measure_tab_uses_x_cursor_range(tmp_path: Path) -> None:
+def test_measurement_horizontal_updates_are_debounced(tmp_path: Path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app
     window = MainWindow()
     window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+
+    assert _measure_text(window, "voltage", "max") == "1 V"
+    assert _measure_text(window, "voltage", "frequency") == "-"
+
+    QtTest.QTest.qWait(window.measure_horizontal_timer.interval() + 50)
+
+    assert _measure_text(window, "voltage", "frequency") == "250 mHz"
+
+
+def test_measurement_scale_change_uses_cached_horizontal_result(tmp_path: Path, monkeypatch) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+    window._update_measurement_horizontal()
+    calls = []
+
+    def fail_horizontal(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("horizontal measurement should use cache")
+
+    monkeypatch.setattr(viewer_module, "horizontal_measurements", fail_horizontal)
+
+    _select_combo_data(window.measure_scale, -3)
+    window._update_measurement_horizontal()
+
+    assert calls == []
+    assert _measure_text(window, "voltage", "period") == "4000 ms"
+
+
+def test_measurement_card_is_reused_during_updates(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+    card = window.measure_panel.measure_cards["voltage"]
+
+    window._update_measurements()
+    window._update_measurement_horizontal()
+
+    assert window.measure_panel.measure_cards["voltage"] is card
+
+
+def test_measurement_card_header_uses_trace_color_with_subtle_selection(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+    card = window.measure_panel.measure_cards["voltage"]
+
+    trace_color = QtGui.QColor(_channel_color(window, "voltage"))
+    header_color = card.header_frame.palette().color(QtGui.QPalette.ColorRole.Window)
+    selected_color = card.frame.palette().color(QtGui.QPalette.ColorRole.Window)
+
+    assert abs(header_color.hue() - trace_color.hue()) <= 2
+    assert header_color.lightness() < trace_color.lightness()
+    assert selected_color.lightness() < 180
+
+
+def test_measure_tab_remove_and_x_cursor_range_apply_to_all_rows(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
     window.measure_channel.setCurrentText("current")
+    window._add_measure_channel()
     _select_combo_data(window.measure_range, "cursors")
+    _select_combo_data(window.measure_scale, -3)
     window.waveform_plot.set_x_cursors_visible(True)
     window.waveform_plot.x_cursors[0].setValue(2.0)
     window.waveform_plot.x_cursors[1].setValue(5.0)
     window._update_measurements()
 
-    assert window.measure_labels["min"].text() == "2"
-    assert window.measure_labels["max"].text() == "5"
-    assert window.measure_labels["avg"].text() == "3.5"
+    assert _measure_text(window, "voltage", "max") == "1 V"
+    assert _measure_text(window, "current", "min") == "2000 mA"
+    assert _measure_text(window, "current", "max") == "5000 mA"
+    assert _measure_text(window, "current", "avg") == "3500 mA"
+
+    window._select_measure_channel("voltage")
+    assert window.measure_range.currentData() == "full"
+    assert window.measure_scale.currentData() == "auto"
+    window._remove_measure_channel()
+
+    assert window.measured_channels == ["current"]
+    assert set(window.measure_panel.measure_cards) == {"current"}
+    assert window.measure_range.currentData() == "cursors"
+    assert window.measure_scale.currentData() == -3
+    assert _measure_text(window, "current", "avg") == "3500 mA"
+
+
+def test_measure_tab_manual_scale_formats_units(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.measure_channel.setCurrentText("voltage")
+    window._add_measure_channel()
+
+    _select_combo_data(window.measure_scale, -3)
+    window._update_measurements()
+    window._update_measurement_horizontal()
+
+    assert _measure_text(window, "voltage", "max") == "1000 mV"
+    assert _measure_text(window, "voltage", "period") == "4000 ms"
+    assert _measure_text(window, "voltage", "frequency") == "250 mHz"
+
+
+def test_cursor_readouts_include_units_and_scale_selection(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    window.waveform_plot.set_x_cursors_visible(True)
+    window.waveform_plot.set_y_cursors_visible(True)
+    window.waveform_plot.x_cursors[0].setValue(2e-6)
+    window.waveform_plot.x_cursors[1].setValue(4e-6)
+    window.waveform_plot.y_cursors[0].setValue(1e-3)
+    window.waveform_plot.y_cursors[1].setValue(2e-3)
+
+    _select_combo_data(window.cursor_scale, -6)
+    window._update_cursor_panel()
+
+    assert window.cursor_labels["X1"].text() == "2 µs"
+    assert window.cursor_labels["dX"].text() == "2 µs"
+    assert window.cursor_labels["Y1"].text() == "1000 µV"
+
+    _select_combo_data(window.cursor_scale, "auto")
+    window._update_cursor_panel()
+
+    assert window.cursor_labels["Y1"].text() == "1 mV"
 
 
 def test_fft_uses_x_cursors_window_and_frequency_range(tmp_path: Path) -> None:
@@ -604,6 +808,45 @@ def test_load_file_asks_for_excel_sheet_when_multiple_sheets(tmp_path: Path, mon
     assert [channel.name for channel in window.data.channels] == ["voltage"]
 
 
+def test_drop_waveform_file_loads_and_schedules_setup(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    path = _write_wave_csv(tmp_path)
+    window = MainWindow()
+    scheduled = []
+
+    def fake_schedule_setup() -> None:
+        scheduled.append(True)
+
+    window._schedule_waveform_setup = fake_schedule_setup
+    event = _FakeDropEvent(_mime_for_path(path))
+
+    window.dropEvent(event)
+
+    assert event.accepted is True
+    assert event.ignored is False
+    assert scheduled == [True]
+    assert window.data is not None
+    assert window.data.source_path == path
+    assert [channel.name for channel in window.data.channels] == ["voltage", "current"]
+
+
+def test_drag_ignores_unsupported_drop_files(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    path = tmp_path / "notes.txt"
+    path.write_text("not a waveform", encoding="utf-8")
+    window = MainWindow()
+    event = _FakeDropEvent(_mime_for_path(path))
+
+    window.dragEnterEvent(event)
+    window.dropEvent(event)
+
+    assert event.accepted is False
+    assert event.ignored is True
+    assert window.data is None
+
+
 def _write_wave_csv(tmp_path: Path) -> Path:
     path = tmp_path / "wave.csv"
     time = np.arange(8.0)
@@ -615,10 +858,41 @@ def _write_wave_csv(tmp_path: Path) -> Path:
     return path
 
 
-def _select_combo_data(combo: QtWidgets.QComboBox, value: str) -> None:
+def _select_combo_data(combo: QtWidgets.QComboBox, value: object) -> None:
     index = combo.findData(value)
     assert index >= 0
     combo.setCurrentIndex(index)
+
+
+def _mime_for_path(path: Path) -> QtCore.QMimeData:
+    mime_data = QtCore.QMimeData()
+    mime_data.setUrls([QtCore.QUrl.fromLocalFile(str(path))])
+    return mime_data
+
+
+class _FakeDropEvent:
+    def __init__(self, mime_data: QtCore.QMimeData) -> None:
+        self._mime_data = mime_data
+        self.accepted = False
+        self.ignored = False
+
+    def mimeData(self) -> QtCore.QMimeData:
+        return self._mime_data
+
+    def acceptProposedAction(self) -> None:
+        self.accepted = True
+
+    def ignore(self) -> None:
+        self.ignored = True
+
+
+def _measure_text(window: MainWindow, channel_name: str, key: str) -> str:
+    card = window.measure_panel.measure_cards.get(channel_name)
+    if card is None:
+        floating = window.detached_measure_windows.get(channel_name)
+        assert floating is not None
+        card = floating._card
+    return card.labels[key].text()
 
 
 def _channel_names_in_group(window: MainWindow, group: str) -> list[str]:

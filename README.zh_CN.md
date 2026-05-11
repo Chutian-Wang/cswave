@@ -42,11 +42,12 @@ python main.py example_csv/1t1r_set_read_0P1V.csv
 | macOS | 下载 `cswave-<version>-macos.zip`，解压后打开 `CSV Waveform Viewer.app`。如果 macOS 首次启动时拦截应用，请在 Finder 中右键选择“打开”。 |
 | Linux | 下载 `cswave-<version>-linux-x64.tar.gz`，解压后运行 `cswave/cswave`。 |
 
-可以通过 `File` > `Open Waveform` 打开文件，因此不需要使用命令行。
+可以通过 `File` > `Open Waveform` 打开文件，也可以把支持的波形文件拖放到应用窗口中，因此不需要使用命令行。
 
 ## 主要功能
 
 - CSV/XLS/XLSX 加载，自动检测时间基准并过滤数字通道。
+- 支持拖放打开 `.csv`、`.xls`、`.xlsx` 和 `.xlsm` 波形文件。
 - Excel 多工作表文件的工作表选择。
 - 示波器风格显示。
 - 双 Y 轴，左右 Y 范围独立。
@@ -64,18 +65,19 @@ python main.py example_csv/1t1r_set_read_0P1V.csv
 - 释放预览高亮区域后可控制主图 X 范围。
 - 在预览区域使用鼠标滚轮可缩放预览时间尺度，同时保持高亮区域的视觉宽度。
 - 可选 OpenGL 渲染器，可从 Display 菜单选择，也可启动前设置 `CSWAVE_OPENGL=1`。
-- 可移动 X/Y 游标，带图上标签、位置、差值和活动通道插值读数。
+- 可移动 X/Y 游标，带图上标签、位置、差值、活动通道插值读数、单位和 SI 缩放选择。
 - 游标标签可直接拖拽。
 - 游标轴组选择器会按游标组过滤活动通道。
 - 游标读数按 X 位置、Y 位置和活动通道值分组显示。
 - Reset Cursors 按钮/快捷键可把游标移动到活动 Y 轴组和当前屏幕中心。
 - Math 页支持计算波形和 FFT 频谱分析。
+- Measure 页支持多信号纵向和频率读数卡片，包含单位、SI 缩放选择、游标范围测量，以及每个信号独立分离到浮动窗口的能力。
 
 ## 快捷键和控制
 
 | 操作 | 控制 |
 | --- | --- |
-| 打开波形 | `Ctrl+O` / `Cmd+O` 或 `File` > `Open Waveform` |
+| 打开波形 | `Ctrl+O` / `Cmd+O`、`File` > `Open Waveform`，或把波形文件拖放到应用中 |
 | 切换活动 Y 控制组 | `T` |
 | 选择活动 Y 控制组 | `Navigate` > `Y group` |
 | 平移 X | 在主图拖拽 |
@@ -164,6 +166,25 @@ FFT 时间范围：
 
 点击 Math 输出列表中的项目会切换到对应视图。计算波形输出切换到 `Waveforms` 并高亮曲线；FFT 输出切换到 `Spectrum`。
 
+## Measure
+
+Measure 页用于为一个或多个波形信号显示可复用的测量卡片。你可以在波形选择器中选中信号并点击 `Add`，也可以点击 `Pick` 后在图中点击一条曲线来直接添加该信号。每个添加的信号都会拥有自己的卡片，并且每张卡片都会记住自己的测量范围和 SI 缩放设置。
+
+测量范围：
+
+- `Full` 测量完整的有限波形。
+- `X cursors` 只测量排序后的 `X1` 与 `X2` 区间；移动 X 游标会更新所有使用游标范围的卡片。
+
+每张卡片会在标题中使用对应信号的颜色，并把读数分为纵向测量和横向测量。纵向测量包含 Max、Min、Avg、Peak-to-peak、RMS 和 ACRMS。横向测量包含 Period 和 Frequency。数值会带合适的单位：纵向值使用信号单位，Period 使用 `s`，Frequency 使用 `Hz`。缩放选择器支持 `Auto`、`p`、`n`、`µ`、`m`、无前缀、`k`、`M`、`G` 和 `T`。
+
+交互：
+
+- 点击测量卡片可选中它，并编辑该信号自己的范围/缩放控件。
+- 双击卡片可把该信号的测量读数分离到浮动窗口。
+- 关闭浮动窗口会把卡片重新附加回 Measure 页。
+- 右键点击卡片可从 Measure 页移除该信号。
+- 整个 Measure 页仍可通过双击右侧标签栏中的 Measure 标签分离。
+
 ## 本地化
 
 GUI 使用 Qt 原生翻译支持。英语是源语言和回退语言。
@@ -188,9 +209,11 @@ python main.py --language zh_CN example_csv/1t1r_set_read_0P1V.csv
 典型翻译流程：
 
 ```bash
-pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_en.ts
-pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_zh_CN.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_en.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_zh_CN.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_ja_JP.ts
 pyside6-lrelease translations/cswave_zh_CN.ts -qm translations/cswave_zh_CN.qm
+pyside6-lrelease translations/cswave_ja_JP.ts -qm translations/cswave_ja_JP.qm
 ```
 
 ## 构建发布包

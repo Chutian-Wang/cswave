@@ -42,11 +42,12 @@ Packaged releases are intended for users who do not want to install Python.
 | macOS | Download `cswave-<version>-macos.zip`, unzip it, and open `CSV Waveform Viewer.app`. If macOS blocks the first launch, use Finder > Open from the context menu. |
 | Linux | Download `cswave-<version>-linux-x64.tar.gz`, extract it, and run `cswave/cswave`. |
 
-You can open files from `File` > `Open Waveform`, so command-line usage is optional.
+You can open files from `File` > `Open Waveform` or by dragging a supported waveform file onto the app window, so command-line usage is optional.
 
 ## Major Features
 
 - CSV/XLS/XLSX loading with automatic time-base detection and numeric channel filtering.
+- Drag-and-drop waveform opening for `.csv`, `.xls`, `.xlsx`, and `.xlsm` files.
 - Sheet selection for Excel files with multiple sheets.
 - Oscilloscope-style visuals.
 - Dual Y axes with independent left/right Y ranges.
@@ -64,18 +65,19 @@ You can open files from `File` > `Open Waveform`, so command-line usage is optio
 - Preview highlight region controls the main X range after mouse release.
 - Mouse wheel on the preview zooms the preview time scale while preserving the highlighted region's visual footprint.
 - Optional OpenGL renderer, selectable from the Display menu or at startup with `CSWAVE_OPENGL=1`.
-- Movable X and Y cursors with on-plot labels, position, delta, and active-channel interpolated values.
+- Movable X and Y cursors with on-plot labels, position, delta, active-channel interpolated values, units, and SI scale selection.
 - Cursor labels can be dragged directly to move the corresponding cursor.
 - Cursor axis group selector, with active-channel choices filtered to the cursor group.
 - Grouped cursor readouts for X positions, Y positions, and active-channel values.
 - Reset Cursors button/shortcut to move cursors to the active Y group and current screen center.
 - Math tab for calculated traces and FFT spectrum analysis.
+- Measure tab for multi-signal vertical and frequency readout cards, with units, SI scale selection, cursor-range measurement, and per-signal detachable floating-window support.
 
 ## Shortcuts And Controls
 
 | Action | Control |
 | --- | --- |
-| Open waveform | `Ctrl+O` / `Cmd+O` or `File` > `Open Waveform` |
+| Open waveform | `Ctrl+O` / `Cmd+O`, `File` > `Open Waveform`, or drag a waveform file onto the app |
 | Toggle active Y control group | `T` |
 | Select active Y control group | `Navigate` > `Y group` |
 | Pan X | drag on main plot |
@@ -164,6 +166,25 @@ Spectrum view:
 
 Clicking an item in the Math output list switches to its corresponding view. Calculated waveform outputs switch to `Waveforms` and highlight the trace; FFT outputs switch to `Spectrum`.
 
+## Measure
+
+The Measure tab shows reusable measurement cards for one or more waveform signals. Select a signal in the waveform picker and press `Add`, or press `Pick` and click a trace in the plot to add that signal directly. Each added signal gets its own card, and each card keeps its own range and SI scale settings.
+
+Measurement range:
+
+- `Full` measures the complete finite waveform.
+- `X cursors` measures only the sorted interval between `X1` and `X2`; moving the X cursors updates every card that uses cursor range.
+
+Each card uses the signal color in its header and groups readouts into vertical and horizontal measurements. Vertical measurements are Max, Min, Avg, Peak-to-peak, RMS, and ACRMS. Horizontal measurements are Period and Frequency. Values include appropriate units: signal units for vertical values, `s` for period, and `Hz` for frequency. The scale selector supports `Auto`, `p`, `n`, `µ`, `m`, no prefix, `k`, `M`, `G`, and `T`.
+
+Interaction:
+
+- Click a measurement card to select it and edit that signal's range/scale controls.
+- Double-click a card to detach that signal's measurements into a floating window.
+- Close the floating window to reattach the card to the Measure tab.
+- Right-click a card to remove that signal from the Measure tab.
+- The whole Measure tab can still be detached from the right-side tab bar by double-clicking the tab.
+
 ## Localization
 
 The GUI uses Qt-native translation support. English is the source language and fallback.
@@ -188,9 +209,11 @@ Translation files live in `translations/`:
 Typical translator workflow:
 
 ```bash
-pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_en.ts
-pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_zh_CN.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_en.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_zh_CN.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_ja_JP.ts
 pyside6-lrelease translations/cswave_zh_CN.ts -qm translations/cswave_zh_CN.qm
+pyside6-lrelease translations/cswave_ja_JP.ts -qm translations/cswave_ja_JP.qm
 ```
 
 ## Building Releases

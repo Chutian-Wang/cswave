@@ -42,11 +42,12 @@ python main.py example_csv/1t1r_set_read_0P1V.csv
 | macOS | `cswave-<version>-macos.zip` をダウンロードして展開し、`CSV Waveform Viewer.app` を開きます。初回起動時に macOS がブロックする場合は、Finder のコンテキストメニューから「開く」を選択してください。 |
 | Linux | `cswave-<version>-linux-x64.tar.gz` をダウンロードして展開し、`cswave/cswave` を実行します。 |
 
-ファイルは `File` > `Open Waveform` から開けるため、コマンドライン操作は必須ではありません。
+ファイルは `File` > `Open Waveform` から開くことも、対応する波形ファイルをアプリウィンドウへドラッグ＆ドロップして開くこともできるため、コマンドライン操作は必須ではありません。
 
 ## 主な機能
 
 - CSV/XLS/XLSX の読み込み、自動時間ベース検出、数値チャンネルのフィルタリング。
+- `.csv`、`.xls`、`.xlsx`、`.xlsm` 波形ファイルのドラッグ＆ドロップ読み込み。
 - 複数シートを持つ Excel ファイルのシート選択。
 - オシロスコープ風の表示。
 - 左右独立した Y 範囲を持つ二重 Y 軸。
@@ -64,18 +65,19 @@ python main.py example_csv/1t1r_set_read_0P1V.csv
 - プレビューのハイライト領域を離すとメイン X 範囲を制御。
 - プレビュー上のマウスホイールで、ハイライト領域の見た目の幅を保ちながら時間スケールをズーム。
 - オプションの OpenGL レンダラー。Display メニューから選択でき、起動前に `CSWAVE_OPENGL=1` を設定することもできます。
-- プロット上ラベル付きの可動 X/Y カーソル、位置、差分、活動チャンネル補間値。
+- プロット上ラベル付きの可動 X/Y カーソル、位置、差分、活動チャンネル補間値、単位、SI スケール選択。
 - カーソルラベルを直接ドラッグして移動可能。
 - カーソル軸グループ選択器は、活動チャンネル候補をカーソルグループでフィルタリング。
 - X 位置、Y 位置、活動チャンネル値をグループ化したカーソル読み取り。
 - Reset Cursors ボタン/ショートカットで、カーソルを活動 Y グループと現在画面中央へ移動。
 - Math タブで計算トレースと FFT スペクトル解析。
+- Measure タブで複数信号の垂直測定と周波数読み取りカードを表示し、単位、SI スケール選択、カーソル範囲測定、信号ごとの浮動ウィンドウ分離に対応。
 
 ## ショートカットと操作
 
 | 操作 | コントロール |
 | --- | --- |
-| 波形を開く | `Ctrl+O` / `Cmd+O` または `File` > `Open Waveform` |
+| 波形を開く | `Ctrl+O` / `Cmd+O`、`File` > `Open Waveform`、または波形ファイルをアプリへドラッグ |
 | 活動 Y 制御グループを切り替え | `T` |
 | 活動 Y 制御グループを選択 | `Navigate` > `Y group` |
 | X をパン | メインプロット上でドラッグ |
@@ -164,6 +166,25 @@ FFT の時間範囲：
 
 Math 出力リストの項目をクリックすると、対応するビューへ切り替わります。計算波形出力は `Waveforms` に切り替えてトレースをハイライトし、FFT 出力は `Spectrum` に切り替えます。
 
+## Measure
+
+Measure タブは、1 つ以上の波形信号の測定カードを表示します。波形ピッカーで信号を選んで `Add` を押すか、`Pick` を押してからプロット上のトレースをクリックすると、その信号を直接追加できます。追加された各信号には個別のカードが作成され、カードごとに測定範囲と SI スケール設定を保持します。
+
+測定範囲：
+
+- `Full` は有限な波形全体を測定します。
+- `X cursors` は `X1` と `X2` のソート済み区間だけを測定します。X カーソルを動かすと、カーソル範囲を使っているすべてのカードが更新されます。
+
+各カードのヘッダーには信号色が使われ、読み取り値は垂直測定と水平測定に分けて表示されます。垂直測定は Max、Min、Avg、Peak-to-peak、RMS、ACRMS です。水平測定は Period と Frequency です。値には適切な単位が付きます。垂直値は信号単位、Period は `s`、Frequency は `Hz` を使用します。スケール選択器は `Auto`、`p`、`n`、`µ`、`m`、接頭辞なし、`k`、`M`、`G`、`T` に対応します。
+
+操作：
+
+- 測定カードをクリックすると選択され、その信号の範囲/スケールコントロールを編集できます。
+- カードをダブルクリックすると、その信号の測定値を浮動ウィンドウへ分離できます。
+- 浮動ウィンドウを閉じると、カードは Measure タブへ戻ります。
+- カードを右クリックすると、その信号を Measure タブから削除できます。
+- Measure タブ全体も、右側タブバーの Measure タブをダブルクリックして分離できます。
+
 ## ローカライズ
 
 GUI は Qt ネイティブの翻訳機能を使用します。英語がソース言語およびフォールバック言語です。
@@ -188,8 +209,10 @@ python main.py --language ja_JP example_csv/1t1r_set_read_0P1V.csv
 一般的な翻訳ワークフロー：
 
 ```bash
-pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_en.ts
-pyside6-lupdate main.py viewer.py plot_widgets.py -ts translations/cswave_ja_JP.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_en.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_zh_CN.ts
+pyside6-lupdate main.py viewer.py viewer_panels.py ui_common.py plot_widgets.py -ts translations/cswave_ja_JP.ts
+pyside6-lrelease translations/cswave_zh_CN.ts -qm translations/cswave_zh_CN.qm
 pyside6-lrelease translations/cswave_ja_JP.ts -qm translations/cswave_ja_JP.qm
 ```
 

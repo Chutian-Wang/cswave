@@ -18,15 +18,36 @@ def test_unary_and_binary_math_handles_invalid_values() -> None:
     b = ChannelData("B", np.array([1.0, 0.0, 2.0]), "#0ff", "V")
 
     sqrt_trace = create_calculated_channel(function_id="sqrt", operand_a=a, operand_b=None, name="sqrt(A)", color="#f0f")
+    square_trace = create_calculated_channel(function_id="square", operand_a=a, operand_b=None, name="A^2", color="#f0f")
     div_trace = create_calculated_channel(function_id="divide", operand_a=a, operand_b=b, name="A/B", color="#f0f")
     add_trace = create_calculated_channel(function_id="add", operand_a=a, operand_b=b, name="A+B", color="#f0f")
+    mul_trace = create_calculated_channel(function_id="multiply", operand_a=a, operand_b=b, name="A*B", color="#f0f")
 
     assert sqrt_trace.values[0] == pytest.approx(1.0)
     assert np.isnan(sqrt_trace.values[1])
     assert np.isinf(div_trace.values[1])
     assert add_trace.values.tolist() == [2.0, -1.0, 6.0]
+    assert sqrt_trace.unit == "sqrt(V)"
+    assert square_trace.unit == "V^2"
     assert add_trace.unit == "V"
+    assert mul_trace.unit == "V^2"
+    assert div_trace.unit is None
     assert add_trace.is_calculated is True
+
+
+def test_math_units_for_mixed_unit_binary_functions() -> None:
+    voltage = ChannelData("V", np.array([1.0, 2.0]), "#fff", "V")
+    current = ChannelData("I", np.array([0.5, 1.0]), "#0ff", "A")
+
+    product = create_calculated_channel(function_id="multiply", operand_a=voltage, operand_b=current, name="power", color="#f0f")
+    ratio = create_calculated_channel(function_id="divide", operand_a=voltage, operand_b=current, name="resistance", color="#f0f")
+    mismatch_sum = create_calculated_channel(function_id="add", operand_a=voltage, operand_b=current, name="sum", color="#f0f")
+    log_trace = create_calculated_channel(function_id="ln", operand_a=voltage, operand_b=None, name="ln(V)", color="#f0f")
+
+    assert product.unit == "V*A"
+    assert ratio.unit == "V/A"
+    assert mismatch_sum.unit is None
+    assert log_trace.unit is None
 
 
 def test_fft_uses_full_time_range_and_reaches_nyquist() -> None:
