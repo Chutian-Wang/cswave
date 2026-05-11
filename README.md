@@ -125,11 +125,14 @@ The Math tab creates session-only calculated outputs from loaded waveforms. Load
 
 Choose a function, select operand `A` and, for binary functions, operand `B`, then enter or accept the generated output name and press `Add`. You can also press `Pick` next to an operand and then click a waveform trace in the main plot to fill that operand. Time-domain results are added as normal waveform traces, so they appear in the channel list, legend, preview, axis setup, trace highlighting, and cursor readouts.
 
+Calculated traces can be used as operands for later Math operations, so more complicated expressions can be built by composing several simpler outputs.
+
 Supported time-domain functions:
 
 | Type | Functions |
 | --- | --- |
-| Unary | `A^2`, `sqrt(A)`, `abs(A)`, `log10(A)`, `ln(A)`, `-A` |
+| Unary | `A^2`, `sqrt(A)`, `abs(A)`, `log10(A)`, `ln(A)`, `-A`, `∫A dt`, `dA/dt` |
+| Scalar | `a*A+b` |
 | Binary | `A+B`, `A-B`, `A*B`, `A/B` |
 
 Invalid numerical results, such as divide-by-zero or square root of a negative value, are left as non-finite samples and skipped by the plot.

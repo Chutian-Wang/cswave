@@ -45,6 +45,69 @@ def test_axis_group_change_recalculates_main_and_preview_y_ranges(tmp_path) -> N
     assert preview_high >= 300.0
 
 
+def test_reset_view_uses_only_visible_enabled_waveforms_for_y_ranges(tmp_path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    plot = WaveformPlot()
+    data = WaveformData(
+        time=np.arange(4.0),
+        channels=[
+            ChannelData("visible", np.array([0.0, 1.0, 2.0, 3.0]), "#ffd400", "V"),
+            ChannelData("hidden", np.array([1000.0, 1001.0, 1002.0, 1003.0]), "#00d7ff", "V"),
+            ChannelData("disabled", np.array([-1000.0, -1001.0, -1002.0, -1003.0]), "#ff40ff", "V"),
+        ],
+        ignored_columns=[],
+        source_path=tmp_path / "wave.csv",
+        time_column="time",
+    )
+    plot.set_data(data)
+    plot.update_axis_settings(
+        {
+            "visible": AxisGroupSettings("left", "V"),
+            "hidden": AxisGroupSettings("left", "V"),
+            "disabled": AxisGroupSettings("disabled", "V"),
+        }
+    )
+    plot.set_selected_channels({"visible"})
+    plot.view_box.setYRange(-5000.0, 5000.0, padding=0.0)
+
+    plot.reset_view()
+
+    low, high = plot.view_box.viewRange()[1]
+    preview_low, preview_high = plot.preview_item.vb.viewRange()[1]
+
+    assert low < 0.0
+    assert high < 10.0
+    assert preview_low < 0.0
+    assert preview_high < 10.0
+
+
+def test_reset_view_x_range_uses_finite_samples_from_visible_waveforms(tmp_path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    plot = WaveformPlot()
+    data = WaveformData(
+        time=np.arange(5.0),
+        channels=[
+            ChannelData("visible", np.array([np.nan, 1.0, 2.0, 3.0, np.nan]), "#ffd400", "V"),
+            ChannelData("hidden", np.array([100.0, np.nan, np.nan, np.nan, 100.0]), "#00d7ff", "V"),
+        ],
+        ignored_columns=[],
+        source_path=tmp_path / "wave.csv",
+        time_column="time",
+    )
+    plot.set_data(data)
+    plot.set_selected_channels({"visible"})
+    plot.plot.setXRange(-10.0, 10.0, padding=0.0)
+
+    plot.reset_view()
+
+    low, high = plot.view_box.viewRange()[0]
+
+    assert low == pytest.approx(1.0)
+    assert high == pytest.approx(3.0)
+
+
 def test_focused_trace_keeps_other_traces_opaque_and_curves_optimized(tmp_path) -> None:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     _ = app

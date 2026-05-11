@@ -50,6 +50,72 @@ def test_math_units_for_mixed_unit_binary_functions() -> None:
     assert log_trace.unit is None
 
 
+def test_affine_integral_and_differential_math_functions() -> None:
+    time = np.array([0.0, 1.0, 2.0, 4.0])
+    channel = ChannelData("A", np.array([1.0, 3.0, 5.0, 9.0]), "#fff", "V")
+
+    affine = create_calculated_channel(
+        function_id="affine",
+        operand_a=channel,
+        operand_b=None,
+        name="a*A+b",
+        color="#f0f",
+        scalar_a=2.0,
+        scalar_b=3.0,
+    )
+    integral = create_calculated_channel(
+        function_id="integral",
+        operand_a=channel,
+        operand_b=None,
+        name="integral",
+        color="#f0f",
+        time=time,
+    )
+    differential = create_calculated_channel(
+        function_id="differential",
+        operand_a=channel,
+        operand_b=None,
+        name="differential",
+        color="#f0f",
+        time=time,
+    )
+
+    assert affine.values.tolist() == [5.0, 9.0, 13.0, 21.0]
+    assert affine.unit == "V"
+    assert integral.values.tolist() == pytest.approx([0.0, 2.0, 6.0, 20.0])
+    assert integral.unit == "V*s"
+    assert differential.values.tolist() == pytest.approx([2.0, 2.0, 2.0, 2.0])
+    assert differential.unit == "V/s"
+
+
+def test_calculus_math_handles_unusable_time_without_changing_length() -> None:
+    time = np.array([0.0, 1.0, 1.0, np.nan])
+    channel = ChannelData("A", np.array([1.0, 3.0, 5.0, 7.0]), "#fff")
+
+    integral = create_calculated_channel(
+        function_id="integral",
+        operand_a=channel,
+        operand_b=None,
+        name="integral",
+        color="#f0f",
+        time=time,
+    )
+    differential = create_calculated_channel(
+        function_id="differential",
+        operand_a=channel,
+        operand_b=None,
+        name="differential",
+        color="#f0f",
+        time=time,
+    )
+
+    assert integral.values.size == channel.values.size
+    assert differential.values.size == channel.values.size
+    assert integral.values[0] == 0.0
+    assert np.isnan(integral.values[2])
+    assert np.any(~np.isfinite(differential.values))
+
+
 def test_fft_uses_full_time_range_and_reaches_nyquist() -> None:
     sample_rate = 16.0
     time = np.arange(16) / sample_rate

@@ -252,6 +252,26 @@ class MathPanel(QtWidgets.QWidget):
         self.math_operand_b_row = operand_picker_row(self.math_operand_b, self.pick_operand_b)
         form.addRow(self.math_operand_b_label, self.math_operand_b_row)
 
+        self.math_scalar_a = QtWidgets.QLineEdit("1")
+        self.math_scalar_b = QtWidgets.QLineEdit("0")
+        self.math_scalar_a.textChanged.connect(operand_changed)
+        self.math_scalar_b.textChanged.connect(operand_changed)
+        self.math_scalar_label = QtWidgets.QLabel(self.tr("Scalars"))
+        scalar_row = QtWidgets.QWidget()
+        scalar_layout = QtWidgets.QHBoxLayout(scalar_row)
+        scalar_layout.setContentsMargins(0, 0, 0, 0)
+        scalar_layout.setSpacing(6)
+        scalar_layout.addWidget(QtWidgets.QLabel(self.tr("a")))
+        scalar_layout.addWidget(self.math_scalar_a)
+        scalar_layout.addWidget(QtWidgets.QLabel(self.tr("b")))
+        scalar_layout.addWidget(self.math_scalar_b)
+        scalar_layout.setStretch(1, 1)
+        scalar_layout.setStretch(3, 1)
+        expand_horizontally(self.math_scalar_a)
+        expand_horizontally(self.math_scalar_b)
+        self.math_scalar_row = scalar_row
+        form.addRow(self.math_scalar_label, self.math_scalar_row)
+
         self.fft_window = QtWidgets.QComboBox()
         for window in WINDOW_FUNCTIONS:
             self.fft_window.addItem(window.label, window.id)

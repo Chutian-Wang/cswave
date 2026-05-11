@@ -317,9 +317,84 @@ def test_spectrum_range_only_visible_for_fft(tmp_path: Path) -> None:
 
     _select_combo_data(window.math_function, "square")
     assert window.spectrum_range_box.isHidden() is True
+    assert window.math_scalar_row.isHidden() is True
+
+    _select_combo_data(window.math_function, "affine")
+    assert window.spectrum_range_box.isHidden() is True
+    assert window.math_scalar_row.isHidden() is False
+    assert window.math_operand_b_row.isHidden() is True
+    assert window.math_scalar_a.text() == "1"
+    assert window.math_scalar_b.text() == "0"
 
     _select_combo_data(window.math_function, "fft")
     assert window.spectrum_range_box.isHidden() is False
+    assert window.math_scalar_row.isHidden() is True
+
+
+def test_invalid_scalar_math_value_does_not_add_trace(tmp_path: Path, monkeypatch) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+    warnings = []
+
+    def fake_warning(parent, title, text):
+        _ = parent
+        warnings.append((title, text))
+
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", fake_warning)
+    _select_combo_data(window.math_function, "affine")
+    window.math_operand_a.setCurrentText("voltage")
+    window.math_scalar_a.setText("not-a-number")
+    window.math_result_name.setText("bad-affine")
+
+    window._add_math_output()
+
+    assert warnings
+    assert warnings[0][0] == "Math failed"
+    assert "finite number" in warnings[0][1]
+    assert "bad-affine" not in {channel.name for channel in window.data.channels}
+
+
+def test_affine_integral_and_differential_outputs_are_added(tmp_path: Path) -> None:
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    _ = app
+    window = MainWindow()
+    window.load_file(_write_wave_csv(tmp_path))
+
+    _select_combo_data(window.math_function, "affine")
+    window.math_operand_a.setCurrentText("current")
+    window.math_scalar_a.setText("2")
+    window.math_scalar_b.setText("3")
+    window.math_result_name.setText("scaled-current")
+    window._add_math_output()
+
+    _select_combo_data(window.math_function, "integral")
+    window.math_operand_a.setCurrentText("voltage")
+    window.math_result_name.setText("integral-voltage")
+    window._add_math_output()
+
+    _select_combo_data(window.math_function, "differential")
+    window.math_operand_a.setCurrentText("voltage")
+    window.math_result_name.setText("diff-voltage")
+    window._add_math_output()
+
+    channels = {channel.name: channel for channel in window.data.channels}
+    assert channels["scaled-current"].values[:3].tolist() == [3.0, 5.0, 7.0]
+    assert channels["scaled-current"].unit == "A"
+    assert channels["integral-voltage"].unit == "V*s"
+    assert channels["integral-voltage"].values[0] == 0.0
+    assert channels["diff-voltage"].unit == "V/s"
+    assert {"scaled-current", "integral-voltage", "diff-voltage"} <= {
+        window.math_outputs.item(index).text()
+        for index in range(window.math_outputs.count())
+    }
+
+    matching = window.math_outputs.findItems("diff-voltage", QtCore.Qt.MatchFlag.MatchExactly)
+    window.math_outputs.setCurrentItem(matching[0])
+
+    assert window.plot_tabs.currentWidget() is window.waveform_plot
+    assert window.waveform_plot.focused_channel == "diff-voltage"
 
 
 def test_english_fallback_labels_and_stable_combo_ids(tmp_path: Path) -> None:

@@ -24,6 +24,8 @@ class MathFunction:
     arity: int
     domain: str
     evaluator: Callable[..., np.ndarray]
+    uses_scalars: bool = False
+    requires_time: bool = False
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,36 @@ def _unary_negate(a: np.ndarray) -> np.ndarray:
     return -a
 
 
+def _affine(a_values: np.ndarray, scalar_a: float, scalar_b: float) -> np.ndarray:
+    return scalar_a * a_values + scalar_b
+
+
+def _integral(a: np.ndarray, time: np.ndarray) -> np.ndarray:
+    if a.size != time.size:
+        raise ValueError("Time and waveform sample counts must match")
+    output = np.full(a.size, np.nan, dtype=float)
+    if a.size == 0:
+        return output
+    output[0] = 0.0
+    if a.size == 1:
+        return output
+    deltas = np.diff(time)
+    areas = 0.5 * (a[1:] + a[:-1]) * deltas
+    invalid = ~np.isfinite(deltas) | (deltas == 0.0)
+    areas[invalid] = np.nan
+    output[1:] = np.cumsum(areas)
+    return output
+
+
+def _differential(a: np.ndarray, time: np.ndarray) -> np.ndarray:
+    if a.size != time.size:
+        raise ValueError("Time and waveform sample counts must match")
+    if a.size < 2:
+        return np.full(a.size, np.nan, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        return np.gradient(a, time)
+
+
 def _binary_add(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a + b
 
@@ -96,6 +128,9 @@ MATH_FUNCTIONS: tuple[MathFunction, ...] = (
     MathFunction("log10", "log10(A)", 1, "time", _unary_log10),
     MathFunction("ln", "ln(A)", 1, "time", _unary_ln),
     MathFunction("negate", "-A", 1, "time", _unary_negate),
+    MathFunction("affine", "a*A+b", 1, "time", _affine, uses_scalars=True),
+    MathFunction("integral", "∫A dt", 1, "time", _integral, requires_time=True),
+    MathFunction("differential", "dA/dt", 1, "time", _differential, requires_time=True),
     MathFunction("add", "A+B", 2, "time", _binary_add),
     MathFunction("subtract", "A-B", 2, "time", _binary_subtract),
     MathFunction("multiply", "A*B", 2, "time", _binary_multiply),
@@ -123,21 +158,34 @@ def create_calculated_channel(
     operand_b: ChannelData | None,
     name: str,
     color: str,
+    time: np.ndarray | None = None,
+    scalar_a: float = 1.0,
+    scalar_b: float = 0.0,
 ) -> ChannelData:
     function = MATH_FUNCTION_BY_ID[function_id]
     if function.domain != "time":
         raise ValueError(f"{function.label} does not create a time-domain trace")
     if function.arity == 2 and operand_b is None:
         raise ValueError(f"{function.label} requires two operands")
+    if function.requires_time and time is None:
+        raise ValueError(f"{function.label} requires a time base")
     if operand_b is not None and operand_a.values.shape != operand_b.values.shape:
         raise ValueError("Operands must have the same sample count")
+    if time is not None and operand_a.values.shape != time.shape:
+        raise ValueError("Time and waveform sample counts must match")
 
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        values_a = operand_a.values.astype(float)
         if function.arity == 1:
-            values = function.evaluator(operand_a.values.astype(float))
+            if function.requires_time:
+                values = function.evaluator(values_a, time.astype(float))
+            elif function.uses_scalars:
+                values = function.evaluator(values_a, scalar_a, scalar_b)
+            else:
+                values = function.evaluator(values_a)
             expression = function.label.replace("A", operand_a.name)
         else:
-            values = function.evaluator(operand_a.values.astype(float), operand_b.values.astype(float))
+            values = function.evaluator(values_a, operand_b.values.astype(float))
             expression = function.label.replace("A", operand_a.name).replace("B", operand_b.name)
 
     return ChannelData(
@@ -255,6 +303,12 @@ def _derived_unit(function_id: str, operand_a: ChannelData, operand_b: ChannelDa
         return f"sqrt({unit_a})" if unit_a else None
     if function_id in {"log10", "ln"}:
         return None
+    if function_id == "affine":
+        return unit_a
+    if function_id == "integral":
+        return f"{unit_a}*s" if unit_a else None
+    if function_id == "differential":
+        return f"{unit_a}/s" if unit_a else None
     if function_id in {"add", "subtract"} and operand_b is not None and unit_a == unit_b:
         return unit_a
     if function_id == "multiply" and operand_b is not None:

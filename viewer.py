@@ -143,6 +143,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.math_operand_b_label = math_panel.math_operand_b_label
         self.pick_operand_b = math_panel.pick_operand_b
         self.math_operand_b_row = math_panel.math_operand_b_row
+        self.math_scalar_a = math_panel.math_scalar_a
+        self.math_scalar_b = math_panel.math_scalar_b
+        self.math_scalar_label = math_panel.math_scalar_label
+        self.math_scalar_row = math_panel.math_scalar_row
         self.fft_window = math_panel.fft_window
         self.fft_window_label = math_panel.fft_window_label
         self.fft_remove_dc = math_panel.fft_remove_dc
@@ -870,10 +874,13 @@ class MainWindow(QtWidgets.QMainWindow):
         function = MATH_FUNCTION_BY_ID.get(function_id)
         is_binary = function is not None and function.arity == 2
         is_fft = function is not None and function.domain == "frequency"
+        uses_scalars = function is not None and function.uses_scalars
         self.math_operand_b.setEnabled(is_binary)
         self.math_operand_b_row.setVisible(is_binary)
         self.math_operand_b_label.setVisible(is_binary)
         self.pick_operand_b.setVisible(is_binary)
+        self.math_scalar_label.setVisible(uses_scalars)
+        self.math_scalar_row.setVisible(uses_scalars)
         if not is_binary and self.pending_waveform_pick == "math_b":
             self._clear_operand_pick()
         self.fft_window.setEnabled(is_fft)
@@ -1116,6 +1123,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if operand_a:
             self.math_result_name.setText(default_result_name(function_id, operand_a, operand_b))
 
+    def _math_scalar_values(self) -> tuple[float, float]:
+        values = []
+        for label, field in ((self.tr("a"), self.math_scalar_a), (self.tr("b"), self.math_scalar_b)):
+            text = field.text().strip()
+            try:
+                value = float(text)
+            except ValueError as exc:
+                raise ValueError(self.tr("Scalar {name} must be a finite number").format(name=label)) from exc
+            if not np.isfinite(value):
+                raise ValueError(self.tr("Scalar {name} must be a finite number").format(name=label))
+            values.append(value)
+        return values[0], values[1]
+
     def _start_operand_pick(self, operand: str, checked: bool) -> None:
         pick_id = f"math_{operand}"
         if not checked:
@@ -1217,16 +1237,21 @@ class MainWindow(QtWidgets.QMainWindow):
         if name in {channel.name for channel in self.data.channels}:
             raise ValueError(self.tr("A trace named {name!r} already exists").format(name=name))
         function_id = self.math_function.currentData()
+        function = MATH_FUNCTION_BY_ID[function_id]
         operand_a = self._channel_by_name(self.math_operand_a.currentText())
-        operand_b = self._channel_by_name(self.math_operand_b.currentText()) if MATH_FUNCTION_BY_ID[function_id].arity == 2 else None
+        operand_b = self._channel_by_name(self.math_operand_b.currentText()) if function.arity == 2 else None
         if operand_a is None:
             raise ValueError(self.tr("Select operand A"))
+        scalar_a, scalar_b = self._math_scalar_values() if function.uses_scalars else (1.0, 0.0)
         channel = create_calculated_channel(
             function_id=function_id,
             operand_a=operand_a,
             operand_b=operand_b,
             name=name,
             color=self._next_calculated_color(),
+            time=self.data.time,
+            scalar_a=scalar_a,
+            scalar_b=scalar_b,
         )
         self.calculated_channels.append(channel)
         self._replace_active_data(select={channel.name})

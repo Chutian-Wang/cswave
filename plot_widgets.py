@@ -464,17 +464,16 @@ class WaveformPlot(QtWidgets.QWidget):
     def reset_view(self) -> None:
         if self.data is None or self.data.time.size == 0:
             return
-        finite_time = self.data.time[np.isfinite(self.data.time)]
-        if finite_time.size == 0:
+        self._redraw()
+        x_range = self._visible_x_range()
+        if x_range is None:
             return
-        x_min = float(np.nanmin(finite_time))
-        x_max = float(np.nanmax(finite_time))
-        if x_min == x_max:
-            x_max = x_min + 1.0
+        x_min, x_max = x_range
         self.plot.setXRange(x_min, x_max, padding=0.0)
-        self.apply_axis_ranges(default_missing=True)
+        self._apply_visible_y_ranges()
         self.region.setRegion((x_min, x_max))
         self._set_preview_range_for_region(x_min, x_max)
+        self.update_axis_highlight()
 
     def zoom_in(self, axis: str) -> None:
         self.view_box.zoom_axis(axis, zoom_in=True)
@@ -945,6 +944,59 @@ class WaveformPlot(QtWidgets.QWidget):
         if len(endpoints) < 2:
             return None, None
         return min(endpoints), max(endpoints)
+
+    def _visible_x_range(self) -> tuple[float, float] | None:
+        if self.data is None:
+            return None
+        mask = np.zeros(self.data.time.shape, dtype=bool)
+        for channel in self._visible_enabled_channels():
+            mask |= np.isfinite(self.data.time) & np.isfinite(channel.values)
+        finite_time = self.data.time[mask]
+        if finite_time.size == 0:
+            finite_time = self.data.time[np.isfinite(self.data.time)]
+        if finite_time.size == 0:
+            return None
+        x_min = float(np.nanmin(finite_time))
+        x_max = float(np.nanmax(finite_time))
+        if x_min == x_max:
+            x_max = x_min + 1.0
+        return x_min, x_max
+
+    def _apply_visible_y_ranges(self) -> None:
+        for group, view_box, preview_view_box in (
+            ("left", self.view_box, self.preview_item.vb),
+            ("right", self.right_view_box, self.preview_right_view_box),
+        ):
+            y_min, y_max = self._visible_group_range(group)
+            view_box.setYRange(y_min, y_max, padding=0.05)
+            preview_view_box.setYRange(y_min, y_max, padding=0.05)
+        self._update_axis_labels()
+
+    def _visible_group_range(self, group: str) -> tuple[float, float]:
+        values = []
+        for channel in self._visible_enabled_channels():
+            if self._channel_group(channel.name) != group:
+                continue
+            finite_values = channel.values[np.isfinite(channel.values)]
+            if finite_values.size:
+                values.append(finite_values)
+        if not values:
+            return 0.0, 1.0
+        combined = np.concatenate(values)
+        y_min = float(np.nanmin(combined))
+        y_max = float(np.nanmax(combined))
+        if y_min == y_max:
+            y_max = y_min + 1.0
+        return y_min, y_max
+
+    def _visible_enabled_channels(self) -> list[ChannelData]:
+        if self.data is None:
+            return []
+        return [
+            channel for channel in self.data.channels
+            if channel.name in self.selected_channels
+            and self._channel_group(channel.name) != "disabled"
+        ]
 
     def _default_group_range(self, group: str) -> tuple[float, float]:
         if self.data is None:
