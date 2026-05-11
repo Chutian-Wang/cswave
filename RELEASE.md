@@ -26,7 +26,7 @@ Linux:
 ./scripts/build_linux.sh
 ```
 
-GitHub Actions also builds all three platforms for tags matching `v*`.
+GitHub Actions builds all three platforms for tags matching `v*`, verifies that every platform artifact was generated, and creates the GitHub release automatically.
 
 ## Validate
 
@@ -40,6 +40,6 @@ GitHub Actions also builds all three platforms for tags matching `v*`.
 
 ## Publish
 
-- Attach `release/` artifacts to the GitHub release.
-- Include the matching source archive.
+- Push a tag matching `v*`, such as `v0.2.0`.
+- Wait for the release workflow to finish successfully; it will attach the Windows, macOS, and Linux artifacts to the GitHub release.
 - Mention that builds are unsigned unless code signing has been configured.

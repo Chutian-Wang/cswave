@@ -6,6 +6,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build ${{ matrix.platform }}
@@ -77,3 +80,53 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.path }}
           if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Verify all release artifacts exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          windows=(release-artifacts/cswave-*-windows-x64.zip)
+          macos=(release-artifacts/cswave-*-macos.zip release-artifacts/cswave-*-macos.tar.gz)
+          linux=(release-artifacts/cswave-*-linux-x64.tar.gz)
+
+          if [[ "${#windows[@]}" -ne 1 ]]; then
+            echo "Expected one Windows artifact, found ${#windows[@]}" >&2
+            exit 1
+          fi
+          if [[ "${#macos[@]}" -ne 1 ]]; then
+            echo "Expected one macOS artifact, found ${#macos[@]}" >&2
+            exit 1
+          fi
+          if [[ "${#linux[@]}" -ne 1 ]]; then
+            echo "Expected one Linux artifact, found ${#linux[@]}" >&2
+            exit 1
+          fi
+
+          mkdir -p release-upload
+          cp "${windows[0]}" release-upload/
+          cp "${macos[0]}" release-upload/
+          cp "${linux[0]}" release-upload/
+          printf '%s\n' "${windows[@]}" "${macos[@]}" "${linux[@]}"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: CSV Waveform Viewer ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-upload/*
