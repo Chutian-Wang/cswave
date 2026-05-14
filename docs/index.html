@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSV Waveform Viewer</title>
+  <meta name="description" content="A PySide6 and pyqtgraph desktop waveform viewer for CSV and Excel oscilloscope data.">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f7f4;
+      --panel: #ffffff;
+      --ink: #1c2228;
+      --muted: #5a6672;
+      --line: #d8ddd7;
+      --accent: #0e8f82;
+      --accent-2: #b6456b;
+      --code: #eef2ef;
+      --shadow: 0 16px 45px rgba(28, 34, 40, 0.10);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101214;
+        --panel: #181b1e;
+        --ink: #eef2f0;
+        --muted: #aeb8bd;
+        --line: #2d3336;
+        --accent: #20c7b5;
+        --accent-2: #ff7ca5;
+        --code: #22282b;
+        --shadow: 0 16px 45px rgba(0, 0, 0, 0.28);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    nav {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 14px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    nav strong {
+      font-size: 0.98rem;
+    }
+
+    nav .links {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 0.94rem;
+    }
+
+    .hero {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 48px 22px 30px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 1.1fr);
+      gap: 32px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(2.35rem, 5vw, 4.6rem);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 1.12rem;
+      max-width: 62ch;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 650;
+    }
+
+    .button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .hero img,
+    .image-grid img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      background: #101214;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 20px 22px 64px;
+    }
+
+    section {
+      padding: 34px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.72rem;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 26px 0 10px;
+      font-size: 1.15rem;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 15px;
+    }
+
+    ul {
+      margin: 0 0 16px;
+      padding-left: 22px;
+    }
+
+    li + li {
+      margin-top: 5px;
+    }
+
+    code,
+    pre {
+      font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      background: var(--code);
+      border-radius: 5px;
+    }
+
+    code {
+      padding: 0.12em 0.34em;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      margin: 14px 0 18px;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 22px;
+      overflow-wrap: anywhere;
+    }
+
+    th,
+    td {
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+    }
+
+    th {
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .caption {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .feature-columns {
+      columns: 2 320px;
+      column-gap: 34px;
+    }
+
+    .feature-columns li {
+      break-inside: avoid;
+    }
+
+    footer {
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      padding: 24px 22px 40px;
+      text-align: center;
+    }
+
+    @media (max-width: 820px) {
+      .hero {
+        grid-template-columns: 1fr;
+        padding-top: 34px;
+      }
+
+      .image-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="Primary navigation">
+      <strong>CSV Waveform Viewer</strong>
+      <div class="links">
+        <a href="https://github.com/Chutian-Wang/cswave#readme">README</a>
+        <a href="README.zh_CN.md">中文</a>
+        <a href="README.ja_JP.md">日本語</a>
+        <a href="https://github.com/Chutian-Wang/cswave">GitHub</a>
+      </div>
+    </nav>
+    <div class="hero">
+      <div>
+        <h1>CSV Waveform Viewer</h1>
+        <p class="lead">A Python desktop waveform viewer for CSV and Excel oscilloscope data, built with PySide6 and pyqtgraph. It supports configurable time bases, dual Y axes, cursors, measurement cards, calculated traces, and FFT spectrum analysis.</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/Chutian-Wang/cswave/releases">Download Releases</a>
+          <a class="button" href="https://github.com/Chutian-Wang/cswave">View Source</a>
+        </div>
+      </div>
+      <img src="demo_pics/Look.png" alt="Waveform viewer with native menus and dark oscilloscope-style plots">
+    </div>
+  </header>
+
+  <main>
+    <section id="setup">
+      <h2>Setup And Run</h2>
+      <p>Install the Python dependencies, then launch the viewer with a CSV or Excel waveform file.</p>
+      <pre><code>python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py example_csv/1t1r_set_read_0P1V.csv</code></pre>
+      <p>The app can also open files from <code>File</code> &gt; <code>Open Waveform</code> or by dragging a supported waveform file onto the app window.</p>
+    </section>
+
+    <section id="demo">
+      <h2>Demo</h2>
+      <div class="image-grid">
+        <figure>
+          <img src="demo_pics/Look.png" alt="Waveform viewer main plot">
+          <figcaption class="caption">Waveform viewer with native menus and oscilloscope-style plots.</figcaption>
+        </figure>
+        <figure>
+          <img src="demo_pics/FFT.png" alt="FFT spectrum view">
+          <figcaption class="caption">FFT spectrum view with Math controls.</figcaption>
+        </figure>
+        <figure>
+          <img src="demo_pics/MultiLang_Detach.png" alt="Localized UI with a detached panel">
+          <figcaption class="caption">Localized UI with detachable right-side panels.</figcaption>
+        </figure>
+        <figure>
+          <img src="demo_pics/Ubuntu.png" alt="CSV Waveform Viewer on Ubuntu">
+          <figcaption class="caption">CSV Waveform Viewer running with a system-style look.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="downloads">
+      <h2>Download And Run</h2>
+      <p>Packaged releases are intended for users who do not want to install Python.</p>
+      <table>
+        <thead>
+          <tr><th>Platform</th><th>How to run</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Windows</td><td>Download <code>cswave-&lt;version&gt;-windows-x64.zip</code>, unzip it, and run <code>cswave.exe</code>.</td></tr>
+          <tr><td>macOS</td><td>Download <code>cswave-&lt;version&gt;-macos.zip</code>, unzip it, and open <code>CSV Waveform Viewer.app</code>. If macOS blocks the first launch, use Finder &gt; Open from the context menu.</td></tr>
+          <tr><td>Linux</td><td>Download <code>cswave-&lt;version&gt;-linux-x64.tar.gz</code>, extract it, and run <code>cswave/cswave</code>.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="features">
+      <h2>Major Features</h2>
+      <ul class="feature-columns">
+        <li>CSV/XLS/XLSX loading with automatic time-base detection and numeric channel filtering.</li>
+        <li>Drag-and-drop waveform opening for <code>.csv</code>, <code>.xls</code>, <code>.xlsx</code>, and <code>.xlsm</code> files.</li>
+        <li>Sheet selection for Excel files with multiple sheets.</li>
+        <li>Dual Y axes with independent left/right Y ranges and automatic voltage/current grouping.</li>
+        <li>Waveform Setup for selecting the time base and assigning waveforms to left, right, or disabled groups.</li>
+        <li>Main waveform plot with X pan/zoom, active-axis Y pan/zoom, preview navigation, trace highlighting, and optional OpenGL rendering.</li>
+        <li>Movable X and Y cursors with units, SI scale selection, grouped readouts, and active-channel interpolation.</li>
+        <li>Math tab for calculated traces, composable outputs, affine transforms, integral/differential traces, and FFT spectrum analysis.</li>
+        <li>Measure tab for multi-signal vertical and frequency readout cards with per-signal scale, range, and detachable floating windows.</li>
+      </ul>
+    </section>
+
+    <section id="controls">
+      <h2>Shortcuts And Controls</h2>
+      <table>
+        <thead>
+          <tr><th>Action</th><th>Control</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Open waveform</td><td><code>Ctrl+O</code> / <code>Cmd+O</code>, <code>File</code> &gt; <code>Open Waveform</code>, or drag a waveform file onto the app.</td></tr>
+          <tr><td>Toggle active Y control group</td><td><code>T</code></td></tr>
+          <tr><td>Reset active view</td><td><code>Ctrl+R</code> / <code>Cmd+R</code> or <code>View</code> &gt; <code>Reset View</code></td></tr>
+          <tr><td>Toggle X/Y cursors</td><td><code>X</code> and <code>Y</code></td></tr>
+          <tr><td>Reset cursors</td><td><code>Shift+R</code> or the Cursors tab button.</td></tr>
+          <tr><td>Zoom and pan</td><td>Mouse wheel and drag on the main plot; hold <code>Ctrl</code> / <code>Cmd</code> for active Y-axis interaction.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="waveform-setup">
+      <h2>Waveform Setup</h2>
+      <p>Waveform Setup opens after loading a waveform file and is also available from the View menu. It controls the X-axis time base and each waveform's Y-axis assignment.</p>
+      <table>
+        <thead>
+          <tr><th>Mode</th><th>Behavior</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>Time column</code></td><td>Uses a selected numeric column as the X axis. The selected time column is not plotted as a signal.</td></tr>
+          <tr><td><code>Sample rate (Sa/s)</code></td><td>Generates time as <code>sample_index / sample_rate</code>. All valid numeric columns are normal signals.</td></tr>
+          <tr><td><code>Sample interval (s/pt)</code></td><td>Generates time as <code>sample_index * sample_interval</code>. All valid numeric columns are normal signals.</td></tr>
+          <tr><td><code>Sample index</code></td><td>Uses <code>0, 1, 2, ...</code> as the X axis. All valid numeric columns are normal signals.</td></tr>
+        </tbody>
+      </table>
+      <p>If a detected time column is overridden with a generated time base, that detected column becomes a normal signal that can be assigned to an axis or disabled.</p>
+    </section>
+
+    <section id="math">
+      <h2>Math</h2>
+      <p>The Math tab creates session-only calculated outputs from loaded waveforms. Time-domain results are added as normal waveform traces, so they appear in the channel list, legend, preview, axis setup, trace highlighting, cursor readouts, and Measure workflows.</p>
+      <p>Calculated traces can be used as operands for later Math operations, so more complicated expressions can be built by composing several simpler outputs.</p>
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Functions</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Unary</td><td><code>A^2</code>, <code>sqrt(A)</code>, <code>abs(A)</code>, <code>log10(A)</code>, <code>ln(A)</code>, <code>-A</code>, <code>∫A dt</code>, <code>dA/dt</code></td></tr>
+          <tr><td>Scalar</td><td><code>a*A+b</code></td></tr>
+          <tr><td>Binary</td><td><code>A+B</code>, <code>A-B</code>, <code>A*B</code>, <code>A/B</code></td></tr>
+        </tbody>
+      </table>
+      <h3>FFT Spectrum</h3>
+      <p><code>FFT(A)</code> creates a frequency-domain spectrum from waveform <code>A</code>. Windowing, DC removal, zero padding, and display frequency limits are available from the Math tab. Moving X cursors does not automatically recompute a spectrum; press <code>Update FFT</code>.</p>
+    </section>
+
+    <section id="measure">
+      <h2>Measure</h2>
+      <p>The Measure tab shows reusable cards for one or more waveform signals. Select a signal and press <code>Add</code>, or press <code>Pick</code> and click a trace in the plot. Each card keeps its own range and SI scale settings.</p>
+      <ul>
+        <li><code>Full</code> measures the complete finite waveform.</li>
+        <li><code>X cursors</code> measures the sorted interval between <code>X1</code> and <code>X2</code>.</li>
+        <li>Vertical measurements include Max, Min, Avg, Peak-to-peak, RMS, and ACRMS.</li>
+        <li>Horizontal measurements include Period and Frequency.</li>
+        <li>Double-click a card to detach it, close the floating window to reattach it, and right-click to remove it.</li>
+      </ul>
+    </section>
+
+    <section id="localization">
+      <h2>Localization</h2>
+      <p>The GUI uses Qt-native translation support. English is the source language and fallback. Chinese and Japanese translations are included, and the startup language can be selected with <code>--language</code> or from the Display menu.</p>
+      <pre><code>python main.py --language zh_CN example_csv/1t1r_set_read_0P1V.csv</code></pre>
+    </section>
+
+    <section id="build">
+      <h2>Building Releases</h2>
+      <p>Release builds use PyInstaller and include translations, examples, README, and license files. GitHub Actions builds Windows, macOS, and Linux artifacts for release tags. See the <a href="RELEASE.md">release checklist</a> for the full flow.</p>
+      <pre><code>.\scripts\build_windows.ps1
+./scripts/build_macos.sh
+./scripts/build_linux.sh</code></pre>
+    </section>
+
+    <section id="license">
+      <h2>License</h2>
+      <p>CSV Waveform Viewer is released under the MIT License. See <a href="https://github.com/Chutian-Wang/cswave/blob/main/LICENSE">LICENSE</a>.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>CSV Waveform Viewer · <a href="https://github.com/Chutian-Wang/cswave">github.com/Chutian-Wang/cswave</a></p>
+  </footer>
+</body>
+</html>

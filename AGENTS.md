@@ -46,6 +46,7 @@ Tests:
 - `tests/test_measurement_engine.py`: pure measurement stats, cursor range selection, FFT-derived horizontal measurements, and measurement cache key tests.
 - `tests/test_plot_widgets.py`: plot widget behavior regressions.
 - `tests/test_viewer_math.py`: viewer-level Math, Spectrum, Excel sheet selection, and setup workflow tests.
+- `docs/`: GitHub Pages project site, translated READMEs, release checklist, and demo screenshots used by documentation.
 - `cswave.spec`: PyInstaller release packaging configuration.
 - `scripts/build_windows.ps1`, `scripts/build_macos.sh`, `scripts/build_linux.sh`: platform release build helpers.
 

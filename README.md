@@ -1,6 +1,6 @@
 # CSV Waveform Viewer
 
-[中文](README.zh_CN.md) | [日本語](README.ja_JP.md)
+[中文](docs/README.zh_CN.md) | [日本語](docs/README.ja_JP.md) | [Project site](docs/index.html)
 
 A Python desktop waveform viewer for CSV and xls files, built with codex, PySide6 and pyqtgraph. This app is tested on modern versions of OSX, Ubuntu, and Windows. There may be undiscovered bugs so feel free to leave issue cards on GitHub!
 
@@ -26,11 +26,11 @@ The app loads CSV and Excel waveform files, detects a time-like column such as `
 
 | Waveform viewer | FFT spectrum |
 | --- | --- |
-| ![Waveform viewer with native menus and dark oscilloscope-style plots](demo_pics/Look.png) | ![FFT spectrum view with math controls](demo_pics/FFT.png) |
+| ![Waveform viewer with native menus and dark oscilloscope-style plots](docs/demo_pics/Look.png) | ![FFT spectrum view with math controls](docs/demo_pics/FFT.png) |
 
 | Localization and detached panels | Ubuntu/system look |
 | --- | --- |
-| ![Localized UI with a detached right-side panel](demo_pics/MultiLang_Detach.png) | ![CSV Waveform Viewer running on Ubuntu](demo_pics/Ubuntu.png) |
+| ![Localized UI with a detached right-side panel](docs/demo_pics/MultiLang_Detach.png) | ![CSV Waveform Viewer running on Ubuntu](docs/demo_pics/Ubuntu.png) |
 
 ## Download And Run
 
@@ -222,6 +222,8 @@ pyside6-lrelease translations/cswave_ja_JP.ts -qm translations/cswave_ja_JP.qm
 ## Building Releases
 
 Release builds use PyInstaller and include translations, examples, README, and license files. Build artifacts are written to `release/`.
+
+See the [release checklist](docs/RELEASE.md) for the tag-based GitHub Actions release flow.
 
 Windows:
 

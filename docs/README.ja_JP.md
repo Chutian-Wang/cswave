@@ -1,6 +1,6 @@
 # CSV Waveform Viewer
 
-[English](README.md) | [中文](README.zh_CN.md)
+[English](../README.md) | [中文](README.zh_CN.md) | [Project site](index.html)
 
 CSV Waveform Viewer は、CSV と Excel の波形ファイルを表示する Python デスクトップアプリです。PySide6 と pyqtgraph で構築されています。このアプリは最近の macOS、Ubuntu、Windows でテストされています。未発見の不具合が残っている可能性があるため、問題があれば GitHub に issue を作成してください。
 
@@ -223,6 +223,8 @@ pyside6-lrelease translations/cswave_ja_JP.ts -qm translations/cswave_ja_JP.qm
 
 リリースビルドは PyInstaller を使用し、翻訳、サンプル、README、ライセンスファイルを含みます。ビルド成果物は `release/` に書き込まれます。
 
+タグベースの GitHub Actions リリース手順については、[リリースチェックリスト](RELEASE.md) を参照してください。
+
 Windows：
 
 ```powershell
@@ -245,4 +247,4 @@ macOS/Linux では `SKIP_TESTS=1` を設定し、Windows では `-SkipTests` を
 
 ## ライセンス
 
-CSV Waveform Viewer は MIT License で公開されています。詳細は [LICENSE](LICENSE) を参照してください。
+CSV Waveform Viewer は MIT License で公開されています。詳細は [LICENSE](../LICENSE) を参照してください。
