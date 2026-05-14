@@ -1,6 +1,6 @@
 # CSV Waveform Viewer
 
-[中文](docs/README.zh_CN.md) | [日本語](docs/README.ja_JP.md) | [Project site](docs/index.html)
+[中文](docs/README.zh_CN.md) | [日本語](docs/README.ja_JP.md) | [Project site](https://chutian-wang.github.io/cswave/)
 
 A Python desktop waveform viewer for CSV and xls files, built with codex, PySide6 and pyqtgraph. This app is tested on modern versions of OSX, Ubuntu, and Windows. There may be undiscovered bugs so feel free to leave issue cards on GitHub!
 

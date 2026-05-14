@@ -1,6 +1,6 @@
 # CSV Waveform Viewer
 
-[English](../README.md) | [日本語](README.ja_JP.md) | [Project site](index.html)
+[English](../README.md) | [日本語](README.ja_JP.md) | [项目主页](https://chutian-wang.github.io/cswave/)
 
 CSV Waveform Viewer 是一个用于 CSV 和 Excel 波形文件的 Python 桌面查看器，基于 PySide6 和 pyqtgraph 构建。该应用已在现代版本的 macOS、Ubuntu 和 Windows 上测试。仍可能存在未知问题，欢迎在 GitHub 上提交 issue。
 
